@@ -81,7 +81,7 @@
   body.touch #keyHint{display:none} body:not(.touch) .zoneHint{display:none}
 
   /* полосы скорости, комикс-надписи */
-  #speedlines{position:fixed;inset:-10%;z-index:3;pointer-events:none;opacity:0;
+  #speedlines{mix-blend-mode:screen;position:fixed;inset:-10%;z-index:3;pointer-events:none;opacity:0;
     background:repeating-conic-gradient(from 0deg at 50% 46%,rgba(255,255,255,0) 0deg 2.6deg,rgba(255,246,228,.7) 2.6deg 2.9deg);
     -webkit-mask-image:radial-gradient(ellipse at 50% 46%,transparent 36%,#000 80%);
     mask-image:radial-gradient(ellipse at 50% 46%,transparent 36%,#000 80%);will-change:transform,opacity}
@@ -342,7 +342,7 @@ function show(id,on){$(id).classList.toggle('hidden',!on);}
 const IS_TOUCH=(window.matchMedia&&matchMedia('(pointer:coarse)').matches)||('ontouchstart' in window);
 const IS_IOS=/iPhone|iPad|iPod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 if(IS_TOUCH)document.body.classList.add('touch');
-const settings={theme:'candy',lightSec:3,drift:0.5,view:'chase',camDist:0.45,style:'comic',pixSize:0.35,steer:'tilt',sens:0.5,inv:0,lefty:0,ghost:1,musicVol:0.6,engineVol:0.7,tyreVol:0.6};
+const settings={theme:'candy',lightSec:3,drift:0.6,view:'chase',camDist:0.45,style:'comic',pixSize:0.35,steer:'tilt',sens:0.5,inv:0,lefty:0,ghost:1,musicVol:0.6,engineVol:0.7,tyreVol:0.6};
 try{const s=JSON.parse(localStorage.getItem('speedline_settings2')||'{}');
   for(const k in settings){if(typeof s[k]===typeof settings[k])settings[k]=s[k];}
   if(!['chase','hood','cockpit','top'].includes(settings.view))settings.view='chase';
@@ -421,19 +421,22 @@ const GRAD=(()=>{const t=new THREE.DataTexture(new Uint8Array([70,150,255]),3,1,
 const toon=p=>new THREE.MeshToonMaterial(Object.assign({gradientMap:GRAD},p));
 const post=new THREE.ShaderMaterial({
   uniforms:{tColor:{value:null},tDepth:{value:null},res:{value:new THREE.Vector2(1,1)},
-    near:{value:camera.near},far:{value:camera.far},mode:{value:0},speed:{value:0},flash:{value:0},
+    near:{value:camera.near},far:{value:camera.far},mode:{value:0},speed:{value:0},flash:{value:0},tm:{value:0},
     ink:{value:new THREE.Color(0x1d1236)},shMul:{value:new THREE.Vector3(.64,.56,1.02)},shAdd:{value:new THREE.Vector3(.035,0,.09)},px:{value:1},dsz:{value:6}},
   vertexShader:'varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}',
   fragmentShader:`precision highp float;
-uniform sampler2D tColor,tDepth;uniform vec2 res;uniform float near,far,mode,speed,flash,px,dsz;uniform vec3 ink,shMul,shAdd;varying vec2 vUv;
+uniform sampler2D tColor,tDepth;uniform vec2 res;uniform float near,far,mode,speed,flash,px,dsz,tm;uniform vec3 ink,shMul,shAdd;varying vec2 vUv;
 float linZ(float d){float z=d*2.-1.;return 2.*near*far/(far+near-z*(far-near));}
 float iw(vec2 uv){return 1./linZ(texture2D(tDepth,uv).x);}
 float bayer2(vec2 a){a=floor(a);return fract(dot(a,vec2(.5,a.y*.75)));}
 float bayer4(vec2 a){return bayer2(.5*a)*.25+bayer2(a);}
 void main(){
   vec2 uv=vUv,tx=px/res;vec3 c;
-  if(mode<.5){vec2 dir=(uv-.5)*speed*.014;
-    c=vec3(texture2D(tColor,uv+dir).r,texture2D(tColor,uv).g,texture2D(tColor,uv-dir).b);}
+  vec2 cv=uv-.5;float er=smoothstep(.12,.55,length(cv));
+  if(mode<.5){vec2 dir=cv*speed*.016;
+    c=vec3(texture2D(tColor,uv+dir).r,texture2D(tColor,uv).g,texture2D(tColor,uv-dir).b);
+    /* радиальное размытие по краям — «туннель» скорости */
+    if(speed>.01){vec3 acc=c;for(int i=1;i<6;i++){acc+=texture2D(tColor,uv-cv*speed*er*.022*float(i)).rgb;}c=mix(c,acc/6.,er);}}
   else c=texture2D(tColor,uv).rgb;
   float wc=iw(uv),wl=iw(uv-vec2(tx.x,0.)),wr=iw(uv+vec2(tx.x,0.)),wd=iw(uv-vec2(0.,tx.y)),wu=iw(uv+vec2(0.,tx.y));
   float lap=(abs(wl+wr-2.*wc)+abs(wu+wd-2.*wc))/max(wc,1e-7);
@@ -447,7 +450,13 @@ void main(){
   else{c=floor(c*7.+bayer4(floor(uv*res)))/7.;}
   c=mix(c,ink,edge*.92);
   c=mix(c,mix(ink,vec3(1.,.95,.76),step(.4,l)),flash);
-  vec2 v=uv-.5;c*=1.-dot(v,v)*.4;
+  /* мерцающие штрихи скорости по краям + дрожь яркости */
+  if(speed>.01){float a=atan(cv.y,cv.x),seg=floor(a*38.),fl=floor(tm*24.);
+    float hsh=fract(sin(seg*12.9898+fl*78.233)*43758.5453);
+    float ln=step(.86-speed*.1,hsh)*smoothstep(.22,.62,length(cv))*(1.-abs(fract(a*38.)-.5)*2.);
+    c=mix(c,vec3(1.,.97,.9),clamp(ln*speed*1.1,0.,.75));
+    c*=1.+speed*.06*(fract(sin(fl*91.7)*4375.85)-.5);}
+  vec2 v=uv-.5;c*=1.-dot(v,v)*(.4+speed*.9);
   gl_FragColor=vec4(c,1.);}`,
   depthTest:false,depthWrite:false});
 const postScene=new THREE.Scene(),postCam=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
@@ -486,13 +495,13 @@ const skyTex=canvasTex(2,256,(g)=>{const gr=g.createLinearGradient(0,0,0,256);
   gr.addColorStop(0,'#2f3fc8');gr.addColorStop(.36,'#5f9bff');gr.addColorStop(.56,'#b9a8ff');
   gr.addColorStop(.66,'#ffb3cf');gr.addColorStop(.76,'#ffcf9a');gr.addColorStop(1,'#ff9e7a');
   g.fillStyle=gr;g.fillRect(0,0,2,256);});
-scene.add(new THREE.Mesh(new THREE.SphereGeometry(4200,24,16),
+scene.add(new THREE.Mesh(new THREE.SphereGeometry(1700,24,16),
   new THREE.MeshBasicMaterial({map:skyTex,side:THREE.BackSide,fog:false,depthWrite:false})));
 const sunSpr=new THREE.Sprite(new THREE.SpriteMaterial({fog:false,depthWrite:false,
   map:canvasTex(128,128,(g)=>{g.fillStyle='rgba(255,250,220,.35)';g.beginPath();g.arc(64,64,62,0,7);g.fill();
     g.fillStyle='#fff6d0';g.beginPath();g.arc(64,64,40,0,7);g.fill();
     g.strokeStyle='#ffd27a';g.lineWidth=5;g.beginPath();g.arc(64,64,51,0,7);g.stroke();})}));
-sunSpr.position.copy(SUN_DIR).multiplyScalar(3800);sunSpr.scale.set(700,700,1);scene.add(sunSpr);
+sunSpr.position.copy(SUN_DIR).multiplyScalar(1500);sunSpr.scale.set(300,300,1);scene.add(sunSpr);
 
 function mountainRing(radius,count,minH,maxH,colBase,colTop,seed,fogOn){
   const r=mulberry32(seed);let h=[];for(let i=0;i<count;i++)h.push(minH+r()*(maxH-minH));
@@ -506,27 +515,25 @@ function mountainRing(radius,count,minH,maxH,colBase,colTop,seed,fogOn){
   g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
   g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));g.setIndex(ind);
   return new THREE.Mesh(g,new THREE.MeshBasicMaterial({vertexColors:true,fog:fogOn,side:THREE.DoubleSide}));}
-const mtns=[mountainRing(3600,140,260,700,0xf6c3cf,0x8a7fe0,11,false),mountainRing(3100,120,120,380,0xd6b0e0,0x6b6bc9,12,false),
-  mountainRing(2200,100,40,150,0x62b25c,0x3f8f55,13,false)];mtns.forEach(m=>scene.add(m));
+const mtns=[mountainRing(1380,120,110,300,0xf6c3cf,0x8a7fe0,11,false),mountainRing(1180,100,50,170,0xd6b0e0,0x6b6bc9,12,false),
+  mountainRing(720,80,16,64,0x62b25c,0x3f8f55,13,true)];mtns.forEach(m=>scene.add(m));
 
 const grassTex=canvasTex(128,128,(g)=>{g.fillStyle='#56b84c';g.fillRect(0,0,128,128);
   for(let i=0;i<70;i++){g.fillStyle=rnd()<.5?'#4ba844':'#63c457';g.beginPath();
     g.arc(rnd()*128,rnd()*128,3+rnd()*9,0,7);g.fill();}
   for(let i=0;i<120;i++){g.fillStyle='#3f9a3c';const x=rnd()*128,y=rnd()*128;g.fillRect(x,y,2,5);g.fillRect(x+3,y+1,2,4);}});
-grassTex.wrapS=grassTex.wrapT=THREE.RepeatWrapping;grassTex.repeat.set(108,108);
-const ground=new THREE.Mesh(new THREE.PlaneGeometry(7000,7000),toon({map:grassTex}));
+grassTex.wrapS=grassTex.wrapT=THREE.RepeatWrapping;grassTex.repeat.set(40,40);
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(2600,2600),toon({map:grassTex}));
 ground.rotation.x=-Math.PI/2;ground.position.y=-0.35;ground.material.polygonOffset=true;ground.material.polygonOffsetFactor=4;ground.material.polygonOffsetUnits=4;ground.receiveShadow=true;scene.add(ground);
 
 /* ================= ТРАССА ================= */
-/* Монца (Autodromo Nazionale Monza), 5,79 км — контур по реальным координатам (GeoJSON bacinger/f1-circuits, MIT) */
-const HPTS=[[-588.1,291.4],[-551.6,-135.0],[-535.0,-313.7],[-533.2,-321.0],[-528.1,-325.2],[-521.7,-326.2],[-513.8,-325.2],[-506.4,-324.7],[-499.6,-325.2],[-494.9,-328.9],[-491.3,-334.1],[-490.3,-338.7],[-490.3,-343.9],[-516.2,-441.4],[-519.8,-467.9],[-521.2,-491.9],[-519.4,-518.0],[-509.7,-645.1],[-506.0,-665.9],[-501.4,-685.2],[-494.5,-706.0],[-485.3,-728.5],[-474.7,-750.3],[-459.0,-774.9],[-442.9,-795.1],[-421.2,-818.1],[-397.7,-838.4],[-371.4,-857.1],[-343.3,-873.3],[-311.6,-889.0],[-279.7,-899.9],[-244.7,-909.7],[-205.0,-916.6],[-164.5,-920.2],[-6.4,-933.7],[187.1,-945.2],[198.7,-946.2],[204.7,-949.4],[209.7,-954.6],[216.1,-977.1],[218.9,-983.3],[223.5,-987.5],[231.4,-990.0],[257.6,-994.7],[286.2,-1000.9],[326.7,-1014.0],[507.8,-1074.4],[523.5,-1078.1],[538.3,-1078.1],[552.5,-1075.4],[562.7,-1071.4],[572.4,-1065.6],[581.6,-1059.3],[593.1,-1046.8],[599.6,-1037.0],[604.2,-1024.9],[606.5,-1011.4],[614.3,-926.0],[629.1,-780.1],[628.6,-767.0],[626.3,-758.6],[622.6,-751.3],[616.6,-746.1],[605.6,-738.8],[487.1,-675.3],[390.8,-621.7],[330.9,-588.8],[301.8,-572.2],[269.1,-549.3],[245.6,-531.5],[225.4,-513.8],[120.3,-424.1],[45.7,-356.9],[-112.0,-219.4],[-206.9,-136.5],[-219.8,-123.5],[-224.9,-115.2],[-225.8,-106.9],[-225.8,-96.9],[-222.6,-75.1],[-221.6,-63.1],[-221.6,-45.9],[-223.0,-36.5],[-226.8,-24.5],[-232.3,-10.5],[-241.5,3.6],[-253.9,18.2],[-268.2,30.2],[-279.7,39.0],[-285.7,45.9],[-290.3,55.2],[-294.5,72.4],[-304.2,151.1],[-314.3,235.0],[-392.6,987.3],[-395.9,1014.4],[-399.1,1027.0],[-405.5,1040.0],[-414.3,1050.5],[-424.5,1059.9],[-438.7,1069.1],[-454.4,1074.9],[-472.3,1078.1],[-487.6,1077.0],[-501.8,1073.9],[-518.4,1067.6],[-534.5,1060.3],[-546.5,1052.0],[-560.9,1041.1],[-577.0,1023.8],[-588.0,1008.2],[-597.7,991.5],[-606.0,971.8],[-613.8,949.9],[-619.8,927.4],[-622.6,908.2],[-625.8,879.0],[-626.3,849.8],[-626.7,822.2],[-628.1,767.5],[-629.1,719.5],[-628.1,667.4],[-622.1,599.2],[-599.6,383.5]];
-const curve=new THREE.CatmullRomCurve3(HPTS.map(p=>new THREE.Vector3(p[0],0,p[1])),true,'centripetal');
-const N=2400;
+const HPTS=[[0,-150],[130,-155],[205,-115],[225,-25],[200,55],[235,125],[170,190],[55,205],
+  [-45,170],[-125,195],[-205,150],[-215,60],[-175,-15],[-115,-65],[-165,-115],[-95,-160]];
+const curve=new THREE.CatmullRomCurve3(HPTS.map(p=>new THREE.Vector3(p[0],0,p[1])),true,'catmullrom',0.6);
+const N=1200;
 let pts=curve.getSpacedPoints(N);pts.pop();
-/* сглаживание: исходные точки редкие, шикана получается с изломом — разглаживаем до радиуса ≥18 м */
-for(let it=0;it<150;it++){const q=pts;pts=q.map((p,i)=>{const a=q[(i-1+N)%N],b=q[(i+1)%N];return new THREE.Vector3((a.x+2*p.x+b.x)/4,0,(a.z+2*p.z+b.z)/4);});}
 let s0=0,bd=1e18;
-for(let i=0;i<N;i++){const p=pts[i],d=(p.x-HPTS[0][0])**2+(p.z-HPTS[0][1])**2;if(d<bd){bd=d;s0=i;}}
+for(let i=0;i<N;i++){const p=pts[i],d=(p.x-65)**2+(p.z+152)**2;if(d<bd){bd=d;s0=i;}}
 pts=pts.slice(s0).concat(pts.slice(0,s0));
 const centers=pts,tangents=[],normals=[],dist=[0];
 for(let i=0;i<N;i++){const t=new THREE.Vector3().subVectors(centers[(i+1)%N],centers[(i-1+N)%N]).normalize();
@@ -534,8 +541,8 @@ for(let i=0;i<N;i++){const t=new THREE.Vector3().subVectors(centers[(i+1)%N],cen
 for(let i=0;i<N-1;i++)dist.push(dist[i]+centers[i].distanceTo(centers[i+1]));
 const totalLen=dist[N-1]+centers[N-1].distanceTo(centers[0]);
 const HW=8,WALLH=2.4;
-/* болид F1: ~1000 л.с. на ~800 кг, максималка ~345 км/ч */
-const F1_POWER=930,F1_CD=0.00105,MAX_FORWARD_SPEED=Math.cbrt(F1_POWER/F1_CD),SPEED_TO_KMH=3.6;
+const MAX_SPEED_KMH=209,ENGINE_ACCEL=34,LINEAR_DRAG=0.55;
+const MAX_FORWARD_SPEED=ENGINE_ACCEL/LINEAR_DRAG,SPEED_TO_KMH=MAX_SPEED_KMH/MAX_FORWARD_SPEED;
 const PHYSICS_DT=1/120;
 const START_I=N-2;
 const startHeading=Math.atan2(tangents[START_I].x,tangents[START_I].z);
@@ -556,7 +563,7 @@ function addRibbon(geo,mat){const m=new THREE.Mesh(geo,mat);m.receiveShadow=true
 const mowTex=canvasTex(32,128,(g)=>{for(let y=0;y<128;y+=16){g.fillStyle=(y/16)%2?'#66c95a':'#52b34b';g.fillRect(0,y,32,16);}});
 mowTex.wrapS=mowTex.wrapT=THREE.RepeatWrapping;
 const mowMat=toon({map:mowTex});
-addRibbon(ribbon(HW+0.1,HW+9,0.004,40),mowMat);addRibbon(ribbon(-HW-9,-HW-0.1,0.004,40),mowMat);
+addRibbon(ribbon(HW+0.1,HW+15,0.004,40),mowMat);addRibbon(ribbon(-HW-15,-HW-0.1,0.004,40),mowMat);
 
 const asphaltTex=canvasTex(128,128,(g)=>{g.fillStyle='#4a4560';g.fillRect(0,0,128,128);
   for(let i=0;i<500;i++){g.fillStyle=rnd()<.5?'rgba(255,255,255,.06)':'rgba(20,10,40,.14)';
@@ -631,14 +638,11 @@ makeGate(0,true,'ФИНИШ');
 
 /* ================= ДЕКОР ================= */
 const dummy=new THREE.Object3D(),tc=new THREE.Color();
-let TBX0=1e9,TBX1=-1e9,TBZ0=1e9,TBZ1=-1e9;centers.forEach(p=>{TBX0=Math.min(TBX0,p.x);TBX1=Math.max(TBX1,p.x);TBZ0=Math.min(TBZ0,p.z);TBZ1=Math.max(TBZ1,p.z);});
-const STAND_I=N-70,standSide=(()=>{const c=centers[STAND_I],n=normals[STAND_I];for(const s of[1,-1]){if(distToTrack(c.x+n.x*s*40,c.z+n.z*s*40,3)>30)return s;}return 1;})();
-const standPos=centers[STAND_I].clone().addScaledVector(normals[STAND_I],standSide*(HW+16));
 const treeSpots=[];{let guard=0;
-  while(treeSpots.length<650&&guard++<20000){
-    const x=lerp(TBX0-250,TBX1+250,rnd()),z=lerp(TBZ0-250,TBZ1+250,rnd());
-    if(Math.hypot(x-standPos.x,z-standPos.z)<70)continue;
-    if(distToTrack(x,z,8)<27)continue;
+  while(treeSpots.length<190&&guard++<6000){
+    const x=(rnd()*2-1)*460,z=(rnd()*2-1)*430;
+    if(z<-165&&z>-215&&x>0&&x<125)continue;
+    if(distToTrack(x,z,6)<27)continue;
     treeSpots.push([x,z,0.75+rnd()*0.8,rnd()*6.28]);}}
 const trunkIM=new THREE.InstancedMesh(new THREE.CylinderGeometry(0.3,0.45,2.4,6),toon({color:0x7a4a3a}),treeSpots.length);
 const crownMat=toon({color:0xffffff});
@@ -654,10 +658,10 @@ treeSpots.forEach(([x,z,s,r],i)=>{
   tc.offsetHSL(0,0,0.06);crownB.setColorAt(i,tc);});
 trunkIM.castShadow=false;scene.add(trunkIM,crownA,crownB);
 const bushSpots=[];{let guard=0;
-  while(bushSpots.length<420&&guard++<20000){
-    const x=lerp(TBX0-80,TBX1+80,rnd()),z=lerp(TBZ0-80,TBZ1+80,rnd());
-    if(Math.hypot(x-standPos.x,z-standPos.z)<60)continue;
-    const d=distToTrack(x,z,8);if(d<19||d>48)continue;bushSpots.push([x,z]);}}
+  while(bushSpots.length<150&&guard++<6000){
+    const x=(rnd()*2-1)*360,z=(rnd()*2-1)*330;
+    if(z<-165&&z>-215&&x>0&&x<125)continue;
+    const d=distToTrack(x,z,6);if(d<19||d>48)continue;bushSpots.push([x,z]);}}
 const bushIM=new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1.3,0),toon({color:0xffffff}),bushSpots.length);
 bushSpots.forEach(([x,z],i)=>{const s=0.7+rnd()*0.9;
   dummy.position.set(x,0.6*s,z);dummy.rotation.set(rnd(),rnd()*6,0);dummy.scale.set(s*1.3,s,s*1.2);dummy.updateMatrix();
@@ -665,7 +669,7 @@ bushSpots.forEach(([x,z],i)=>{const s=0.7+rnd()*0.9;
 scene.add(bushIM);
 
 /* трибуна со зрителями */
-const stand=new THREE.Group();stand.position.copy(standPos);stand.lookAt(centers[STAND_I].x,0,centers[STAND_I].z);scene.add(stand);
+const stand=new THREE.Group();stand.position.set(62,0,-184);scene.add(stand);
 const stepMat=toon({color:0x3a2a6e});
 [[3,0,-1.5],[6,3.5,-4],[9,7,-6.5]].forEach(s=>{
   const b=new THREE.Mesh(new THREE.BoxGeometry(92,s[0],5),stepMat);b.position.set(0,s[0]/2,s[2]);stand.add(b);});
@@ -682,7 +686,7 @@ function placeCrowd(t,jump){crowdBase.forEach(([x,y,z,ph],i)=>{
   dummy.position.set(x,y+(jump?Math.max(0,Math.sin(t*9+ph))*0.45:0),z);dummy.rotation.set(0,0,0);dummy.scale.setScalar(1);
   dummy.updateMatrix();crowdIM.setMatrixAt(i,dummy.matrix);});crowdIM.instanceMatrix.needsUpdate=true;}
 placeCrowd(0,false);stand.add(crowdIM);
-for(const [lx,lz] of [0.12,0.3,0.47,0.63,0.8,0.95].map(f=>{const i=Math.floor(f*N),c=centers[i],n=normals[i];let s=1;if(distToTrack(c.x+n.x*30,c.z+n.z*30,4)<25)s=-1;return[c.x+n.x*s*30,c.z+n.z*s*30];})){
+for(const [lx,lz] of [[-250,-210],[270,-200],[-260,240],[280,230]]){
   const pole=new THREE.Mesh(new THREE.CylinderGeometry(.5,.7,30,6),stepMat);pole.position.set(lx,15,lz);scene.add(pole);
   const lamp=new THREE.Mesh(new THREE.BoxGeometry(4,1.6,1),new THREE.MeshBasicMaterial({color:0xfff6d8}));
   lamp.position.set(lx,30,lz);scene.add(lamp);}
@@ -691,7 +695,7 @@ for(const [lx,lz] of [0.12,0.3,0.47,0.63,0.8,0.95].map(f=>{const i=Math.floor(f*
 const BOARDS=[['SPEEDLINE','#ff3d7f','#fff6e4'],['TURBO·COLA','#ffd23f','#1d1236'],['NITRO','#35d6ff','#1d1236'],
   ['GRIP!','#1d1236','#ffd23f'],['VOLT','#3ddc84','#1d1236'],['PIT STOP','#ff8a3d','#fff6e4']];
 const boardGeo=new THREE.PlaneGeometry(12,3),boardBack=new THREE.BoxGeometry(12.3,3.3,0.25),legGeo=new THREE.BoxGeometry(0.25,1.6,0.25);
-Array.from({length:16},(_,k)=>[Math.floor((k+0.5)/16*N),k%2?-1:1]).forEach(([idx,side],k)=>{
+[[70,1],[290,-1],[470,1],[640,-1],[860,1],[1030,-1]].forEach(([idx,side],k)=>{
   const c=centers[idx],n=normals[idx],off=side*(HW+5.5);
   const x=c.x+n.x*off,z=c.z+n.z*off;if(distToTrack(x,z,2)<HW+3)return;
   const [txt,bg,fg]=BOARDS[k%BOARDS.length];
@@ -710,9 +714,9 @@ const cloudTex=canvasTex(256,128,(g)=>{const blobs=[[70,78,40],[118,58,52],[170,
   g.fillStyle='#d9c6ff';blobs.forEach(([x,y,r])=>{g.beginPath();g.arc(x,y+8,r,0,7);g.fill();});
   g.fillStyle='#ffffff';blobs.forEach(([x,y,r])=>{g.beginPath();g.arc(x,y,r,0,7);g.fill();});});
 const clouds=[];
-for(let i=0;i<26;i++){const s=new THREE.Sprite(new THREE.SpriteMaterial({map:cloudTex,transparent:true,depthWrite:false,fog:false}));
-  s.position.set((rnd()*2-1)*2600,320+rnd()*260,(rnd()*2-1)*2600);
-  const k=300+rnd()*320;s.scale.set(k,k*0.5,1);scene.add(s);clouds.push(s);}
+for(let i=0;i<12;i++){const s=new THREE.Sprite(new THREE.SpriteMaterial({map:cloudTex,transparent:true,depthWrite:false,fog:false}));
+  s.position.set((rnd()*2-1)*800,170+rnd()*130,(rnd()*2-1)*800);
+  const k=150+rnd()*160;s.scale.set(k,k*0.5,1);scene.add(s);clouds.push(s);}
 
 /* ================= МАШИНА ================= */
 const carRoot=new THREE.Group();scene.add(carRoot);
@@ -846,7 +850,7 @@ function addSkid(w,x,z,rx,rz){const hw=0.17,y=0.046;
 
 /* ================= ЗАЕЗД: СНИМКИ, РЕКОРДЫ ================= */
 /* снимок: [t, x, z, курс(непрерывный), vx, vz, индекс трассы, пройденный путь] — 60 раз в секунду */
-const TRACK_ID='monza',TRACK_NAME='Монца';
+const TRACK_ID='stadium',TRACK_NAME='Стадион';
 const DS=totalLen/N;
 let best=null,cleanBest=null,ghostProg=null;
 try{const b=JSON.parse(localStorage.getItem('speedline2_'+TRACK_ID+'_best')||'null');
@@ -933,17 +937,17 @@ function thump(p){if(!AC)return;const t=AC.currentTime,g=gainN(0),lp=filt('lowpa
   const o=AC.createOscillator(),og=gainN(0);o.frequency.setValueAtTime(90,t);o.frequency.exponentialRampToValueAtTime(40,t+0.15);
   o.connect(og);og.connect(sfxBus);env(og,t,0.8*clamp(p,0.3,1),0.004,0.16);o.start(t);o.stop(t+0.2);}
 /* передачи: обороты растут внутри передачи, на переключении проседают, выхлоп хлопает */
-const GEAR_TOP=[0.27,0.37,0.46,0.55,0.64,0.74,0.86,1.02];
+const GEAR_TOP=[0.17,0.31,0.46,0.62,0.8,1.03];
 function updateEngine(dt,vfNow){if(!eng)return;const t=AC.currentTime,MV=MAX_FORWARD_SPEED;
   const racing=state==='race',idle=state==='lights'||state==='go'||state==='ready'||state==='fstart';
   const thr=racing?ctl.thr:(idle?0:0);const v=Math.abs(vfNow);
   let target;
   if(!racing&&!idle){target=0;}
   else if(v<1.5){target=900+thr*600;eng.gear=1;}
-  else{if(eng.gear<8&&v>GEAR_TOP[eng.gear-1]*MV*0.985){eng.gear++;eng.shiftT=0.16;if(thr>0.5)pops(2,0.1,false);}
+  else{if(eng.gear<6&&v>GEAR_TOP[eng.gear-1]*MV*0.985){eng.gear++;eng.shiftT=0.16;if(thr>0.5)pops(2,0.1,false);}
     else if(eng.gear>1&&v<GEAR_TOP[eng.gear-2]*MV*0.72){eng.gear--;if(ctl.brk>0.2)pops(1,0.04,false);}
     const lo=eng.gear===1?0:GEAR_TOP[eng.gear-2]*MV*0.72,hi=GEAR_TOP[eng.gear-1]*MV;
-    target=lerp(4200,7800,clamp((v-lo)/(hi-lo),0,1));}
+    target=lerp(2800,7600,clamp((v-lo)/(hi-lo),0,1));}
   if(eng.shiftT>0){eng.shiftT-=dt;target*=0.78;}
   eng.rpm=lerp(eng.rpm,target||900,1-Math.exp(-dt*(eng.shiftT>0?30:12)));
   const load=eng.shiftT>0?0:thr,f=eng.rpm/60*3;
@@ -1023,6 +1027,20 @@ function emitSmoke(dt,vfNow){if(state!=='race')return;
     spawnP(px,0.3,pz,rnd()<0.7?curTheme.smoke[0]:curTheme.smoke[1],car.vel.x*0.12-fx_*1.2+(rnd()*2-1)*1.2,0.8+rnd()*1.2,car.vel.z*0.12-fz*1.2+(rnd()*2-1)*1.2,
       0.9+rnd()*0.8*inten+0.6*inten,0.6+0.7*inten+rnd()*0.3,-0.5,1.3+1.5*inten,false);}}
 function clearParts(){parts.forEach(p=>{p.life=0;p.s.visible=false;});}
+
+/* ================= ВЕТРОВЫЕ ШТРИХИ: белые полосы, пролетающие мимо на скорости ================= */
+const STREAKS=60,stMat=new THREE.MeshBasicMaterial({color:0xfff6e4,transparent:true,opacity:0,depthWrite:false,fog:false});
+const stIM=new THREE.InstancedMesh(new THREE.BoxGeometry(0.035,0.035,1),stMat,STREAKS);stIM.frustumCulled=false;scene.add(stIM);
+const streaks=Array.from({length:STREAKS},()=>({p:new THREE.Vector3(),live:false}));const _sd=new THREE.Object3D();
+function updateStreaks(dt){const sp=state==='race'?clamp((speed/MAX_FORWARD_SPEED-0.35)/0.65,0,1):0;
+  stMat.opacity=sp*0.8;const fx_=Math.sin(car.heading),fz=Math.cos(car.heading),len=0.5+speed*0.07;
+  for(const s of streaks){
+    if(s.live){const rel=(s.p.x-camera.position.x)*fx_+(s.p.z-camera.position.z)*fz;if(rel<-2||rel>70)s.live=false;}
+    if(!s.live&&sp>0&&Math.random()<sp*0.5){const side=(Math.random()<0.5?-1:1)*(1.6+Math.random()*7),ah=25+Math.random()*40;
+      s.p.set(car.pos.x+fx_*ah-fz*side,0.3+Math.random()*4.5,car.pos.z+fz*ah+fx_*side);s.live=true;}}
+  streaks.forEach((s,i)=>{if(s.live&&sp>0){_sd.position.copy(s.p);_sd.rotation.set(0,car.heading,0);_sd.scale.set(1,1,len);}
+    else{_sd.position.set(0,-50,0);_sd.scale.set(0.001,0.001,0.001);}_sd.updateMatrix();stIM.setMatrixAt(i,_sd.matrix);});
+  stIM.instanceMatrix.needsUpdate=true;}
 
 /* ================= ТЕМЫ ================= */
 const THEMES={
@@ -1278,15 +1296,12 @@ function computeControls(dt){
   if(IS_TOUCH&&lastSrc==='touch')thr=touchCtl.thr;
   if(brk>0.02&&lastSrc!=='touch')thr=Math.min(thr,1-brk);
   if(window.__ap&&state==='race'){/* тестовый автопилот, включается только флагом из автотеста */
-    const look=Math.round(clamp(car.vel.length()*0.55/DS,5,28)),tg=centers[(car.idx+look)%N],ang=Math.atan2(tg.x-car.pos.x,tg.z-car.pos.z);
+    const tg=centers[(car.idx+22)%N],ang=Math.atan2(tg.x-car.pos.x,tg.z-car.pos.z);
     steer=clamp(-shortAngle(ang-car.heading)*2.2,-1,1);
-    const sp0=car.vel.length();let want=MAX_FORWARD_SPEED;
-    for(let k=4;k<120;k+=4){const i0=(car.idx+k)%N,a=centers[(i0-8+N)%N],b=centers[i0],c=centers[(i0+8)%N];
-      const t1=Math.atan2(b.x-a.x,b.z-a.z),t2=Math.atan2(c.x-b.x,c.z-b.z),ang=Math.abs(shortAngle(t2-t1))+1e-4,R=b.distanceTo(c)/ang;
-      const kR=0.0047*R*0.8,vc=kR<0.97?Math.sqrt(16.5*0.8*R/(1-kR)):MAX_FORWARD_SPEED,dist_=k*DS;
-      want=Math.min(want,Math.sqrt(vc*vc+2*30*dist_));}
     steer=clamp(-shortAngle(ang-car.heading)*2.2,-1,1);
-    thr=sp0<want?1:0;window.__apBrk=sp0>want+2?1:0;}
+    let cur=0;for(let k=10;k<70;k+=10){const a1=tangents[(car.idx+k)%N],a0=tangents[car.idx];cur=Math.max(cur,1-a1.dot(a0));}
+    const want=cur>0.25?26:cur>0.1?38:MAX_FORWARD_SPEED;const sp0=car.vel.length();
+    thr=sp0<want?1:0;window.__apBrk=sp0>want+4?1:0;}
   steerGain=Math.min(1,steerGain+dt/0.3);
   ctl.steer=steer*steerGain;ctl.thr=thr;ctl.brk=window.__ap&&state==='race'?(window.__apBrk||0):brk;ctl.hb=0;}
 
@@ -1337,39 +1352,29 @@ function physics(dt){
   const {steer,thr,brk,hb}=ctl;
   const fwd=new THREE.Vector3(Math.sin(car.heading),0,Math.cos(car.heading)),rgt=new THREE.Vector3(-fwd.z,0,fwd.x);
   let vf=car.vel.dot(fwd),vl=car.vel.dot(rgt);
-  /* ===== болид F1 =====
-     сцепление = механическое (~1.7g) + прижимная сила антикрыльев (растёт как v²): 2g в шпильке, 5–6g в быстрой дуге.
-     разгон ограничен мощностью (~1000 л.с./800 кг) и сцеплением задних колёс; сопротивление воздуха ~v². */
-  const D=settings.drift,A=2.0,B=1.6,K2=2.4,L=A+B;   // центр масс ближе к задней оси (~45/55)
-  const sp=Math.abs(vf),aero=0.0047*sp*sp,Gv=16.5+aero;
-  const trac=0.55*Gv+2;                                         // предел тяги задних колёс
-  const drive=thr*Math.min(F1_POWER/Math.max(sp,4),trac);
-  wheelspin=thr>0.6&&F1_POWER/Math.max(sp,4)>trac*1.05&&sp<30?1:0;
-  let acc=0;
-  if(brk>0.02){if(vf>0.5){acc=-brk*Gv*1.02;stopT=0;}else{stopT+=dt;if(stopT>0.35)acc=-8*brk;else{acc=0;vf*=Math.exp(-12*dt);}}}
-  else{stopT=0;acc=drive;}
-  if(vf>0)acc-=F1_CD*vf*vf+0.15+(thr<0.05&&brk<=0.02?1.6:0);   // воздух + качение + торможение двигателем
-  else if(vf<0)acc+=F1_CD*vf*vf+0.15;
-  vf=clamp(vf+acc*dt,-13,MAX_FORWARD_SPEED);
-  /* две оси, у каждой свой предел. Перенос веса: на торможении перед держит сильнее, зад — слабее.
-     Газ съедает сцепление задних колёс (круг трения) — на выходе из медленного поворота зад срывается. */
-  let vy=-vl,r=yawRate;
-  const delta=-steer*lerp(0.42,0.06,clamp(sp/80,0,1));
-  const wt=0.12*brk,ub=Math.sqrt(1-(brk*0.8)**2);              // торможение тоже тратит сцепление (круг трения)
-  const capF=(B/L)*Gv*(1+wt)*ub;
-  let capR=(A/L)*Gv*lerp(1.25,1.05,D)*(1-wt)*ub;
-  const fc=lerp(0.35,1.2,D)*clamp(1.4-sp/60,0.3,1),use=clamp(fc*drive/(capR*1.4*2*A/L),0,0.94);capR*=Math.sqrt(1-use*use);
-  const C=Gv*8;
-  if(vf>0.5){
-    const u=Math.max(vf,6),af=Math.atan2(vy+A*r,u)-delta,ar=Math.atan2(vy-B*r,u);
-    const Ff=clamp(-C*af,-capF,capF),Fr=clamp(-C*ar,-capR,capR),cd=Math.cos(delta);
-    vy+=(Ff*cd+Fr-vf*r)*dt;vf+=(vy*r-Math.abs(Ff*Math.sin(delta))*0.4)*dt;r+=(A*Ff*cd-B*Fr)/K2*dt;
-    /* аркадная страховка от «волчка»: за пределом угла заноса машину мягко докручивает обратно */
-    {const be=Math.atan2(vy,Math.max(vf,1)),bm=lerp(0.35,0.7,D),ex=Math.abs(be)-bm;if(ex>0)r+=Math.sign(be)*ex*lerp(14,7,D)*dt;}
-    if(vf<10){const w=vf/10,rk=vf*Math.tan(delta)/L;r=lerp(rk,r,w);vy*=lerp(0.92,1,w);}
-  }else{r=vf*Math.tan(delta)/L;vy*=Math.exp(-8*dt);}
-  if(Math.abs(vy)>2)vf*=Math.exp(-0.15*Math.min(1,Math.abs(vy)/12)*dt);
-  vl=-vy;yawRate=r;
+  let acc=thr*ENGINE_ACCEL;
+  if(brk>0.02){if(vf>0.5){acc-=70*brk;stopT=0;}else{stopT+=dt;if(stopT>0.35)acc=-20*brk;else{acc=0;vf*=Math.exp(-12*dt);}}}
+  else stopT=0;
+  wheelspin=thr>0.6&&vf>1&&vf<10&&run&&run.reaction!=null&&lapTime-run.reaction<1.3?1:0;
+  if(thr<0.05&&vf>1&&brk<=0.02)acc-=5;
+  const dragDecay=Math.exp(-LINEAR_DRAG*dt);
+  vf=vf*dragDecay+acc/LINEAR_DRAG*(1-dragDecay);vf=clamp(vf,-13,MAX_FORWARD_SPEED);
+  /* сцепление: на ручнике задние колёса почти не держат вбок — машина идёт боком */
+  /* боковое сцепление ограничено (круг трения): ползунок «Дрифт» снижает сцепление */
+  const D=settings.drift,G=hb?lerp(12,3,D):lerp(70,12,D);
+  const lost=Math.min(Math.abs(vl),G*dt);vl-=Math.sign(vl)*lost;
+  if(Math.abs(vl)>2)vf*=Math.exp(-(0.12+0.25*D)*Math.min(1,Math.abs(vl)/12)*dt);
+  if(hb)vf*=Math.exp(-0.5*dt);
+  const dir=vf>=0?1:-1;
+  const rate=2.6*clamp(Math.abs(vf)/8,0,1)*(1-0.25*Math.abs(vf)/MAX_FORWARD_SPEED);
+  /* рысканье с инерцией: на ручнике разворот набирается и сам не гаснет — можно улететь в занос */
+  /* занос сам себя раскручивает (избыточная поворачиваемость) — нужен контрруль, иначе разворот */
+  const sliding=Math.abs(vl)>2.5;
+  const yawT=-steer*rate*dir*(hb?2.2:1)+(sliding?clamp(vl,-20,20)*(0.03+0.07*D)*dir:0);
+  const k=hb?2.6:(sliding?lerp(6,3,D):16);
+  yawRate+=(yawT-yawRate)*(1-Math.exp(-k*dt));
+  if(hb&&!hbPrev&&Math.abs(vf)>10)yawRate+=-steer*1.1*dir;
+  hbPrev=hb;
   car.heading+=yawRate*dt;
   car.vel.copy(fwd).multiplyScalar(vf).addScaledVector(rgt,vl);car.pos.addScaledVector(car.vel,dt);slip=Math.abs(vl);
   const prevIdx=car.idx;car.idx=findNearest(car.idx,30);
@@ -1437,14 +1442,14 @@ function updateCamera(dt,motion){
     {camIdx=nearestAt(camPos.x,camPos.z,car.idx,30);const cc=centers[camIdx],ex=camPos.x-cc.x,ez=camPos.z-cc.z,ed=Math.hypot(ex,ez),cl=HW-0.7;
      if(ed>cl){camPos.x=cc.x+ex/ed*cl;camPos.z=cc.z+ez/ed*cl;}}
     if(motion)shake=Math.max(0,shake-dt*2);
-    const sh=motion?(shake*0.25+sp*sp*0.05):0;
+    const sh=motion?(shake*0.25+Math.pow(sp,3)*0.11):0;
     camera.position.set(camPos.x+(rnd()*2-1)*sh,camPos.y+(rnd()*2-1)*sh*0.6,camPos.z+(rnd()*2-1)*sh);
     camera.lookAt(car.pos.x+_f.x*4,car.pos.y+0.95,car.pos.z+_f.z*4);
     camera.rotateZ(-steerVis*0.07*sp);setNear(0.3);fovT=62+speed*0.26+portrait;fovT=clamp(fovT,62+portrait,78+portrait);}
   camera.fov=dt>=1?fovT:lerp(camera.fov,fovT,1-Math.exp(-5*dt));camera.updateProjectionMatrix();}
 function menuCamera(dt,t){sun.target.position.set(0,0,0);sun.position.copy(SUN_DIR).multiplyScalar(150);
   cockpit.visible=false;exteriorTop.forEach(m=>m.visible=true);setNear(0.3);
-  {const c0=centers[START_I];camera.position.set(c0.x+Math.sin(t*0.12)*16,4.5,c0.z+Math.cos(t*0.12)*16);camera.lookAt(c0.x,0.6,c0.z);}
+  camera.position.set(Math.sin(t*0.1)*260,130,Math.cos(t*0.1)*260+20);camera.lookAt(0,0,20);
   camera.fov=lerp(camera.fov,camera.aspect<1?78:60,0.05);camera.updateProjectionMatrix();}
 
 /* ================= АДАПТИВНОЕ РАЗРЕШЕНИЕ («Комикс») ================= */
@@ -1497,9 +1502,9 @@ function loop(){
     if(racing||state==='go'||state==='ready')placeGhost(ghostClock());
     if(celebrateT>0){celebrateT-=dt;placeCrowd(elapsed,celebrateT>0);}
     setText('speed',String(Math.round(speed*SPEED_TO_KMH)));
-    const sp=clamp(speed/MAX_FORWARD_SPEED,0,1),sl=racing?clamp((sp-0.6)/0.4,0,1)*0.6:0,slEl=$('speedlines');
-    slEl.style.opacity=sl.toFixed(3);
-    if(sl>0&&Math.floor(elapsed*12)!==slEl._f){slEl._f=Math.floor(elapsed*12);slEl.style.transform='rotate('+((Math.random()*2-1)*4).toFixed(1)+'deg)';}
+    const sp=clamp(speed/MAX_FORWARD_SPEED,0,1),sl=racing?clamp((sp-0.45)/0.55,0,1)*0.7:0,slEl=$('speedlines');
+    if(sl>0&&Math.floor(elapsed*20)!==slEl._f){slEl._f=Math.floor(elapsed*20);slEl.style.opacity=(sl*(0.55+Math.random()*0.45)).toFixed(3);slEl.style.transform='rotate('+((Math.random()*2-1)*6).toFixed(1)+'deg) scale('+(1+Math.random()*0.04).toFixed(3)+')';}
+    else if(sl<=0)slEl.style.opacity='0';
     emitSmoke(dt,vfNow);updateEngine(dt,vfNow);}
   if(state==='menu')updateEngine(dt,0);
   const sp=clamp(speed/MAX_FORWARD_SPEED,0,1);
@@ -1508,7 +1513,7 @@ function loop(){
   if(AC&&musicLP)musicLP.frequency.setTargetAtTime(state==='pause'||state==='pick'?650:9000,AC.currentTime,0.15);
   if(state!=='pause'&&state!=='pick')updateParts(dt);
   post.uniforms.flash.value=flash>0.6?0.85:0;flash=Math.max(0,flash-dt*6);
-  post.uniforms.speed.value=state==='race'?clamp((speed/MAX_FORWARD_SPEED-0.55)/0.45,0,1):0;
+  post.uniforms.speed.value=state==='race'?clamp((speed/MAX_FORWARD_SPEED-0.4)/0.6,0,1):0;post.uniforms.tm.value=elapsed;updateStreaks(dt);
   renderer.setRenderTarget(rt);renderer.render(scene,camera);renderer.setRenderTarget(null);renderer.render(postScene,postCam);}
 
 carRoot.position.copy(centers[START_I]);carRoot.rotation.y=startHeading;flame.visible=false;
