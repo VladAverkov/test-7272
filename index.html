@@ -125,6 +125,7 @@
     justify-content:center;touch-action:pan-x}
   .tcard{scroll-snap-align:center;flex:0 0 auto;width:260px;padding:12px;display:flex;flex-direction:column;align-items:center;gap:8px}
   .tcard canvas{width:200px;height:120px}
+  .tcard.cur{outline:4px solid var(--pink);outline-offset:3px}
   .tcard h3{font-weight:900;font-style:italic;font-size:22px}
   .times{display:flex;gap:14px;font-size:12px;font-weight:700;opacity:.9}
   .times b{display:block;font-family:var(--num);font-weight:900;font-size:16px}
@@ -214,7 +215,7 @@
 <div id="ctrlHint" class="off hidden">
   <div class="zoneHint" id="zhH"><span>РУЧНИК</span><small id="zhHSmall">держи</small></div>
   <div class="zoneHint" id="zhL"><span id="zhLText">ТОРМОЗ</span><small id="zhLSmall">↑ сильнее</small></div>
-  <div class="zoneHint" id="zhR"><span>ГАЗ</span><small id="zhRSmall">↑ сильнее</small></div>
+  <div class="zoneHint" id="zhR"><span>ГАЗ</span><small id="zhRSmall">держи</small></div>
   <div id="goMsg" class="sticker">Жди зелёный</div>
   <div id="keyHint" class="sticker">W газ · S тормоз · A D руль · ПРОБЕЛ ручник</div>
 </div>
@@ -255,6 +256,7 @@
       <div class="setRow touchOnly"><span>Газ и тормоз наоборот</span><div class="seg" data-set="lefty">
         <button data-v="0">Нет</button><button data-v="1">Да</button></div></div>
       <div class="setRow"><span>Светофор <b id="lightVal" class="sval"></b></span><input type="range" min="1" max="5" step="1" data-set="lightSec"></div>
+      <div class="setRow"><span>Эффекты скорости</span><input type="range" min="0" max="1" step="0.01" data-set="fx"></div>
       <div class="setRow"><span>Дрифт</span><input type="range" min="0" max="1" step="0.01" data-set="drift"></div>
       <div class="setRow"><span>Призрак</span><div class="seg" data-set="ghost">
         <button data-v="1">Вкл</button><button data-v="0">Выкл</button></div></div>
@@ -344,7 +346,7 @@ function show(id,on){$(id).classList.toggle('hidden',!on);}
 const IS_TOUCH=(window.matchMedia&&matchMedia('(pointer:coarse)').matches)||('ontouchstart' in window);
 const IS_IOS=/iPhone|iPad|iPod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 if(IS_TOUCH)document.body.classList.add('touch');
-const settings={theme:'candy',lightSec:3,drift:0.6,view:'chase',camDist:0.45,style:'comic',pixSize:0.35,steer:'tilt',sens:0.5,inv:0,lefty:0,ghost:1,musicVol:0.6,engineVol:0.7,tyreVol:0.6};
+const settings={theme:'candy',lightSec:3,drift:0.6,fx:0.5,view:'chase',camDist:0.45,style:'comic',pixSize:0.35,steer:'tilt',sens:0.5,inv:0,lefty:0,ghost:1,musicVol:0.6,engineVol:0.7,tyreVol:0.6};
 try{const s=JSON.parse(localStorage.getItem('speedline_settings2')||'{}');
   for(const k in settings){if(typeof s[k]===typeof settings[k])settings[k]=s[k];}
   if(!['chase','hood','cockpit','top'].includes(settings.view))settings.view='chase';
@@ -529,21 +531,28 @@ const ground=new THREE.Mesh(new THREE.PlaneGeometry(2600,2600),toon({map:grassTe
 ground.rotation.x=-Math.PI/2;ground.position.y=-0.35;ground.material.polygonOffset=true;ground.material.polygonOffsetFactor=4;ground.material.polygonOffsetUnits=4;ground.receiveShadow=true;scene.add(ground);
 
 /* ================= ТРАССА ================= */
-const HPTS=[[0,-150],[130,-155],[205,-115],[225,-25],[200,55],[235,125],[170,190],[55,205],
-  [-45,170],[-125,195],[-205,150],[-215,60],[-175,-15],[-115,-65],[-165,-115],[-95,-160]];
+/* трассы: выбранная хранится в localStorage, мир строится под неё при загрузке */
+const TRACK_DEFS={
+  stadium:{name:'Стадион',hw:8,start:[65,-152],pts:[[0,-150],[130,-155],[205,-115],[225,-25],[200,55],[235,125],[170,190],[55,205],
+    [-45,170],[-125,195],[-205,150],[-215,60],[-175,-15],[-115,-65],[-165,-115],[-95,-160]]},
+  ring:{name:'Кольцо',hw:11,start:[-60,-212],pts:[[335,0],[302,118],[212,190],[90,211],[-35,212],[-140,211],[-212,190],[-252,118],[-265,0],
+    [-252,-118],[-212,-190],[-140,-211],[-35,-212],[90,-211],[212,-190],[302,-118]]}};
+let TRACK_ID='stadium';try{const s=localStorage.getItem('speedline_track');if(TRACK_DEFS[s])TRACK_ID=s;}catch(e){}
+const TRACK_NAME=TRACK_DEFS[TRACK_ID].name;
+const HPTS=TRACK_DEFS[TRACK_ID].pts;
 const curve=new THREE.CatmullRomCurve3(HPTS.map(p=>new THREE.Vector3(p[0],0,p[1])),true,'catmullrom',0.6);
 const N=1200;
 let pts=curve.getSpacedPoints(N);pts.pop();
 let s0=0,bd=1e18;
-for(let i=0;i<N;i++){const p=pts[i],d=(p.x-65)**2+(p.z+152)**2;if(d<bd){bd=d;s0=i;}}
+{const st=TRACK_DEFS[TRACK_ID].start;for(let i=0;i<N;i++){const p=pts[i],d=(p.x-st[0])**2+(p.z-st[1])**2;if(d<bd){bd=d;s0=i;}}}
 pts=pts.slice(s0).concat(pts.slice(0,s0));
 const centers=pts,tangents=[],normals=[],dist=[0];
 for(let i=0;i<N;i++){const t=new THREE.Vector3().subVectors(centers[(i+1)%N],centers[(i-1+N)%N]).normalize();
   tangents.push(t);normals.push(new THREE.Vector3(-t.z,0,t.x));}
 for(let i=0;i<N-1;i++)dist.push(dist[i]+centers[i].distanceTo(centers[i+1]));
 const totalLen=dist[N-1]+centers[N-1].distanceTo(centers[0]);
-const HW=8,WALLH=2.4;
-const MAX_SPEED_KMH=209,ENGINE_ACCEL=34,LINEAR_DRAG=0.55;
+const HW=TRACK_DEFS[TRACK_ID].hw,WALLH=2.4;
+const MAX_SPEED_KMH=209,ENGINE_ACCEL=26,LINEAR_DRAG=26/61.82;   // разгон мягче, максималка та же
 const MAX_FORWARD_SPEED=ENGINE_ACCEL/LINEAR_DRAG,SPEED_TO_KMH=MAX_SPEED_KMH/MAX_FORWARD_SPEED;
 const PHYSICS_DT=1/120;
 const START_I=N-2;
@@ -640,11 +649,13 @@ makeGate(0,true,'ФИНИШ');
 
 /* ================= ДЕКОР ================= */
 const dummy=new THREE.Object3D(),tc=new THREE.Color();
+const STAND_I=(N-40)%N,standSide=(()=>{const c=centers[STAND_I],n=normals[STAND_I];for(const s of[1,-1]){if(distToTrack(c.x+n.x*s*45,c.z+n.z*s*45,3)>35)return s;}return -1;})();
+const standPos=centers[STAND_I].clone().addScaledVector(normals[STAND_I],standSide*(HW+16));
 const treeSpots=[];{let guard=0;
   while(treeSpots.length<190&&guard++<6000){
     const x=(rnd()*2-1)*460,z=(rnd()*2-1)*430;
-    if(z<-165&&z>-215&&x>0&&x<125)continue;
-    if(distToTrack(x,z,6)<27)continue;
+    if(Math.hypot(x-standPos.x,z-standPos.z)<75)continue;
+    if(distToTrack(x,z,6)<HW+19)continue;
     treeSpots.push([x,z,0.75+rnd()*0.8,rnd()*6.28]);}}
 const trunkIM=new THREE.InstancedMesh(new THREE.CylinderGeometry(0.3,0.45,2.4,6),toon({color:0x7a4a3a}),treeSpots.length);
 const crownMat=toon({color:0xffffff});
@@ -662,8 +673,8 @@ trunkIM.castShadow=false;scene.add(trunkIM,crownA,crownB);
 const bushSpots=[];{let guard=0;
   while(bushSpots.length<150&&guard++<6000){
     const x=(rnd()*2-1)*360,z=(rnd()*2-1)*330;
-    if(z<-165&&z>-215&&x>0&&x<125)continue;
-    const d=distToTrack(x,z,6);if(d<19||d>48)continue;bushSpots.push([x,z]);}}
+    if(Math.hypot(x-standPos.x,z-standPos.z)<65)continue;
+    const d=distToTrack(x,z,6);if(d<HW+11||d>HW+40)continue;bushSpots.push([x,z]);}}
 const bushIM=new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1.3,0),toon({color:0xffffff}),bushSpots.length);
 bushSpots.forEach(([x,z],i)=>{const s=0.7+rnd()*0.9;
   dummy.position.set(x,0.6*s,z);dummy.rotation.set(rnd(),rnd()*6,0);dummy.scale.set(s*1.3,s,s*1.2);dummy.updateMatrix();
@@ -671,7 +682,7 @@ bushSpots.forEach(([x,z],i)=>{const s=0.7+rnd()*0.9;
 scene.add(bushIM);
 
 /* трибуна со зрителями */
-const stand=new THREE.Group();stand.position.set(62,0,-184);scene.add(stand);
+const stand=new THREE.Group();stand.position.copy(standPos);stand.lookAt(centers[STAND_I].x,0,centers[STAND_I].z);scene.add(stand);
 const stepMat=toon({color:0x3a2a6e});
 [[3,0,-1.5],[6,3.5,-4],[9,7,-6.5]].forEach(s=>{
   const b=new THREE.Mesh(new THREE.BoxGeometry(92,s[0],5),stepMat);b.position.set(0,s[0]/2,s[2]);stand.add(b);});
@@ -688,7 +699,7 @@ function placeCrowd(t,jump){crowdBase.forEach(([x,y,z,ph],i)=>{
   dummy.position.set(x,y+(jump?Math.max(0,Math.sin(t*9+ph))*0.45:0),z);dummy.rotation.set(0,0,0);dummy.scale.setScalar(1);
   dummy.updateMatrix();crowdIM.setMatrixAt(i,dummy.matrix);});crowdIM.instanceMatrix.needsUpdate=true;}
 placeCrowd(0,false);stand.add(crowdIM);
-for(const [lx,lz] of [[-250,-210],[270,-200],[-260,240],[280,230]]){
+for(const [lx,lz] of [0.2,0.45,0.7,0.92].map(f=>{const i=Math.floor(f*N),c=centers[i],n=normals[i];let s=1;if(distToTrack(c.x+n.x*35,c.z+n.z*35,4)<30)s=-1;return[c.x+n.x*s*35,c.z+n.z*s*35];})){
   const pole=new THREE.Mesh(new THREE.CylinderGeometry(.5,.7,30,6),stepMat);pole.position.set(lx,15,lz);scene.add(pole);
   const lamp=new THREE.Mesh(new THREE.BoxGeometry(4,1.6,1),new THREE.MeshBasicMaterial({color:0xfff6d8}));
   lamp.position.set(lx,30,lz);scene.add(lamp);}
@@ -852,7 +863,6 @@ function addSkid(w,x,z,rx,rz){const hw=0.17,y=0.046;
 
 /* ================= ЗАЕЗД: СНИМКИ, РЕКОРДЫ ================= */
 /* снимок: [t, x, z, курс(непрерывный), vx, vz, индекс трассы, пройденный путь] — 60 раз в секунду */
-const TRACK_ID='stadium',TRACK_NAME='Стадион';
 const DS=totalLen/N;
 let best=null,cleanBest=null,ghostProg=null;
 try{const b=JSON.parse(localStorage.getItem('speedline2_'+TRACK_ID+'_best')||'null');
@@ -1030,12 +1040,13 @@ function emitSmoke(dt,vfNow){if(state!=='race')return;
       0.9+rnd()*0.8*inten+0.6*inten,0.6+0.7*inten+rnd()*0.3,-0.5,1.3+1.5*inten,false);}}
 function clearParts(){parts.forEach(p=>{p.life=0;p.s.visible=false;});}
 
+const FXK=()=>settings.fx*2;   // 0 — никаких эффектов, 1 — как было, 2 — максимум
 /* ================= ВЕТРОВЫЕ ШТРИХИ: белые полосы, пролетающие мимо на скорости ================= */
 const STREAKS=60,stMat=new THREE.MeshBasicMaterial({color:0xfff6e4,transparent:true,opacity:0,depthWrite:false,fog:false});
 const stIM=new THREE.InstancedMesh(new THREE.BoxGeometry(0.035,0.035,1),stMat,STREAKS);stIM.frustumCulled=false;scene.add(stIM);
 const streaks=Array.from({length:STREAKS},()=>({p:new THREE.Vector3(),live:false}));const _sd=new THREE.Object3D();
-function updateStreaks(dt){const sp=state==='race'?clamp((speed/MAX_FORWARD_SPEED-0.35)/0.65,0,1):0;
-  stMat.opacity=sp*0.8;const fx_=Math.sin(car.heading),fz=Math.cos(car.heading),len=0.5+speed*0.07;
+function updateStreaks(dt){let sp=state==='race'?clamp((speed/MAX_FORWARD_SPEED-0.35)/0.65,0,1):0;
+  stMat.opacity=Math.min(1,sp*0.8*FXK());if(FXK()<=0)sp=0;const fx_=Math.sin(car.heading),fz=Math.cos(car.heading),len=0.5+speed*0.07;
   for(const s of streaks){
     if(s.live){const rel=(s.p.x-camera.position.x)*fx_+(s.p.z-camera.position.z)*fz;if(rel<-2||rel>70)s.live=false;}
     if(!s.live&&sp>0&&Math.random()<sp*0.5){const side=(Math.random()<0.5?-1:1)*(1.6+Math.random()*7),ah=25+Math.random()*40;
@@ -1130,21 +1141,29 @@ function applyTheme(){const P=curTheme=THEMES[settings.theme]||THEMES.candy,R=mu
   if(typeof buildMenu==='function'&&state==='menu')buildMenu();}
 
 /* ================= МЕНЮ: КАРУСЕЛЬ ТРАСС ================= */
-function drawTrackThumb(cv){const g=cv.getContext('2d'),W=cv.width,H=cv.height;g.clearRect(0,0,W,H);
-  let a=1e9,b=-1e9,c=1e9,d=-1e9;centers.forEach(p=>{a=Math.min(a,p.x);b=Math.max(b,p.x);c=Math.min(c,p.z);d=Math.max(d,p.z);});
+function drawTrackThumb(cv,P){const g=cv.getContext('2d'),W=cv.width,H=cv.height;g.clearRect(0,0,W,H);
+  let a=1e9,b=-1e9,c=1e9,d=-1e9;P.forEach(p=>{a=Math.min(a,p.x);b=Math.max(b,p.x);c=Math.min(c,p.z);d=Math.max(d,p.z);});
   const s=Math.min((W-24)/(b-a),(H-24)/(d-c)),ox=(W-(b-a)*s)/2,oy=(H-(d-c)*s)/2;
-  g.lineJoin='round';g.beginPath();centers.forEach((p,i)=>{const x=ox+(p.x-a)*s,y=oy+(p.z-c)*s;i?g.lineTo(x,y):g.moveTo(x,y);});g.closePath();
+  g.lineJoin='round';g.beginPath();P.forEach((p,i)=>{const x=ox+(p.x-a)*s,y=oy+(p.z-c)*s;i?g.lineTo(x,y):g.moveTo(x,y);});g.closePath();
   g.strokeStyle='#1d1236';g.lineWidth=12;g.stroke();g.strokeStyle='#ff3d7f';g.lineWidth=6;g.stroke();
-  g.fillStyle='#ffd23f';g.strokeStyle='#1d1236';g.lineWidth=3;g.beginPath();g.arc(ox+(centers[0].x-a)*s,oy+(centers[0].z-c)*s,7,0,7);g.fill();g.stroke();}
-function buildMenu(){const el=$('carousel');el.innerHTML='';
-  const card=document.createElement('div');card.className='tcard sticker';
-  card.innerHTML='<canvas width="400" height="240"></canvas><h3>'+TRACK_NAME+'</h3>'+
-    '<div class="times"><span>Лучший<b>'+fmt(best&&best.total)+'</b></span><span>Чистый<b>'+fmt(cleanBest)+'</b></span></div>'+
-    '<div class="tbtns"><button class="cbtn" data-act="play">ЕХАТЬ ▶</button>'+(best?'<button class="cbtn alt" data-act="improve">УЛУЧШИТЬ</button>':'')+'</div>';
-  drawTrackThumb(card.querySelector('canvas'));
-  card.addEventListener('click',e=>{initAudio();const act=e.target.closest('button')?.dataset.act;
-    if(act==='improve')openPick();else play();});
-  el.appendChild(card);}
+  g.fillStyle='#ffd23f';g.strokeStyle='#1d1236';g.lineWidth=3;g.beginPath();g.arc(ox+(P[0].x-a)*s,oy+(P[0].z-c)*s,7,0,7);g.fill();g.stroke();}
+function trackRecords(id){let bt=null,cl=null;try{const b=JSON.parse(localStorage.getItem('speedline2_'+id+'_best')||'null');if(b)bt=b.total;
+  const c=Number(localStorage.getItem('speedline2_'+id+'_clean'));if(c>0)cl=c;}catch(e){}return{bt,cl};}
+function buildMenu(){const el=$('carousel');el.innerHTML='';let cur=null;
+  for(const id in TRACK_DEFS){const def=TRACK_DEFS[id],here=id===TRACK_ID;
+    const card=document.createElement('div');card.className='tcard sticker'+(here?' cur':'');
+    const r=here?{bt:best&&best.total,cl:cleanBest}:trackRecords(id);
+    card.innerHTML='<canvas width="400" height="240"></canvas><h3>'+def.name+'</h3>'+
+      '<div class="times"><span>Лучший<b>'+fmt(r.bt)+'</b></span><span>Чистый<b>'+fmt(r.cl)+'</b></span></div>'+
+      '<div class="tbtns"><button class="cbtn" data-act="play">ЕХАТЬ ▶</button>'+(here&&best?'<button class="cbtn alt" data-act="improve">УЛУЧШИТЬ</button>':'')+'</div>';
+    let P=here?centers:new THREE.CatmullRomCurve3(def.pts.map(p=>new THREE.Vector3(p[0],0,p[1])),true,'catmullrom',0.6).getSpacedPoints(200);
+    if(!here){let bi=0,bd=1e18;P.forEach((p,i)=>{const d=(p.x-def.start[0])**2+(p.z-def.start[1])**2;if(d<bd){bd=d;bi=i;}});P=P.slice(bi).concat(P.slice(0,bi));}
+    drawTrackThumb(card.querySelector('canvas'),P);
+    card.addEventListener('click',e=>{initAudio();const act=e.target.closest('button')?.dataset.act;
+      if(!here){try{localStorage.setItem('speedline_track',id);}catch(_){}card.querySelector('h3').textContent='Загрузка…';location.reload();return;}
+      if(act==='improve')openPick();else play();});
+    el.appendChild(card);if(here)cur=card;}
+  if(cur)setTimeout(()=>cur.scrollIntoView({inline:'center',block:'nearest'}),0);}
 
 /* ================= ПОТОК ИГРЫ ================= */
 const uiTimers=new Set();
@@ -1154,7 +1173,7 @@ function hideAll(){['menuScr','setScr','pauseScr','pickScr','resScr','lights','w
 function hint(on,msg,zones=true){const h=$('ctrlHint');
   if(on){show('ctrlHint',true);h.classList.remove('off');h.classList.toggle('noZones',!zones);$('goMsg').textContent=msg;
     const tiltM=settings.steer==='tilt';
-    $('zhLSmall').textContent=tiltM?'↑ сильнее':'↑ сильнее · ↔ руль';$('zhHSmall').textContent=tiltM?'держи':'держи · ↔ руль';$('zhRSmall').textContent=tiltM?'↑ сильнее':'↑ сильнее · ↔ руль';}
+    $('zhLSmall').textContent=tiltM?'↑ сильнее':'↑ сильнее · ↔ руль';$('zhHSmall').textContent=tiltM?'держи':'держи · ↔ руль';$('zhRSmall').textContent=tiltM?'держи':'держи · ↔ руль';}
   else{h.classList.add('off');later(()=>{if(h.classList.contains('off'))show('ctrlHint',false);},400);}}
 function snapCam(){carRoot.position.copy(car.pos);carRoot.rotation.y=car.heading;updateCamera(1,false);camPos.copy(_d);}
 
@@ -1269,7 +1288,7 @@ Z.addEventListener('contextmenu',e=>e.preventDefault());
 function readTouch(){let hb=0,brk=0,thr=0,steer=0,steerActive=false,bp=null,lp=null,best=0;const H=innerHeight;
   for(const p of ptrs.values()){const k=clamp((H*0.92-p.y)/(H*0.7),0,1);
     if(p.side==='brake'){if(p.hbZone){hb=1;}else{const kb=clamp((H*0.95-p.y)/(H*0.5),0,1),v=0.15+0.85*kb;if(v>brk){brk=v;bp=p;}}}
-    else{const v=0.35+0.65*clamp(k*1.5,0,1);if(v>thr)thr=v;}
+    else thr=1;
     if(settings.steer==='touch'){const dx=p.x-p.x0;if(Math.abs(dx)>=best){best=Math.abs(dx);lp=p;steerActive=true;steer=clamp(dx/lerp(120,45,settings.sens),-1,1);}}}
   touchCtl.brk=brk;touchCtl.thr=thr;touchCtl.hb=hb;touchCtl.steer=steer;touchCtl.steerActive=steerActive;
   const bf=$('brakeFb');if(bp&&state==='race'){show('brakeFb',true);bf.style.left=(bp.x-38)+'px';bf.style.top=clamp(bp.y-55,8,innerHeight-120)+'px';bf.firstChild.style.height=(brk*100)+'%';}else show('brakeFb',false);
@@ -1355,7 +1374,7 @@ function physics(dt){
   const fwd=new THREE.Vector3(Math.sin(car.heading),0,Math.cos(car.heading)),rgt=new THREE.Vector3(-fwd.z,0,fwd.x);
   let vf=car.vel.dot(fwd),vl=car.vel.dot(rgt);
   let acc=thr*ENGINE_ACCEL*1.08;   // асимптота чуть выше 209, чтобы максималка реально достигалась
-  if(brk>0.02){if(vf>0.5){acc-=70*brk;stopT=0;}else{stopT+=dt;if(stopT>0.35)acc=-20*brk;else{acc=0;vf*=Math.exp(-12*dt);}}}
+  if(brk>0.02){if(vf>0.5){acc-=50*brk;stopT=0;}else{stopT+=dt;if(stopT>0.35)acc=-20*brk;else{acc=0;vf*=Math.exp(-12*dt);}}}
   else stopT=0;
   wheelspin=thr>0.6&&vf>1&&vf<10&&run&&run.reaction!=null&&lapTime-run.reaction<1.3?1:0;
   if(thr<0.05&&vf>1&&brk<=0.02)acc-=5;
@@ -1363,7 +1382,7 @@ function physics(dt){
   vf=vf*dragDecay+acc/LINEAR_DRAG*(1-dragDecay);vf=clamp(vf,-13,MAX_FORWARD_SPEED);
   /* сцепление: на ручнике задние колёса почти не держат вбок — машина идёт боком */
   /* боковое сцепление ограничено (круг трения): ползунок «Дрифт» снижает сцепление */
-  const D=settings.drift,G=hb?lerp(12,3,D):lerp(70,12,D);
+  const D=settings.drift,dk=Math.min(1,D/0.3),G=hb?3+9*(1-D)+400*Math.pow(1-D,8):12+58*(1-D)+400*Math.pow(1-D,8);  // на нуле — без проскальзывания вообще
   const lost=Math.min(Math.abs(vl),G*dt);vl-=Math.sign(vl)*lost;
   if(Math.abs(vl)>2)vf*=Math.exp(-(0.12+0.25*D)*Math.min(1,Math.abs(vl)/12)*dt);
   if(hb)vf*=Math.exp(-0.5*dt);
@@ -1372,10 +1391,10 @@ function physics(dt){
   /* рысканье с инерцией: на ручнике разворот набирается и сам не гаснет — можно улететь в занос */
   /* занос сам себя раскручивает (избыточная поворачиваемость) — нужен контрруль, иначе разворот */
   const sliding=Math.abs(vl)>2.5;
-  const yawT=-steer*rate*dir*(hb?2.2:1)+(sliding?clamp(vl,-20,20)*(0.03+0.07*D)*dir:0);
-  const k=hb?2.6:(sliding?lerp(6,3,D):16);
+  const yawT=-steer*rate*dir*(hb?lerp(1,2.2,dk):1)+(sliding?clamp(vl,-20,20)*(0.03+0.07*D)*dk*dir:0);
+  const k=D<0.02?16:hb?2.6:(sliding?lerp(6,3,D):16);
   yawRate+=(yawT-yawRate)*(1-Math.exp(-k*dt));
-  if(hb&&!hbPrev&&Math.abs(vf)>10)yawRate+=-steer*1.1*dir;
+  if(hb&&!hbPrev&&Math.abs(vf)>10)yawRate+=-steer*1.1*dir*dk;
   hbPrev=hb;
   car.heading+=yawRate*dt;
   car.vel.copy(fwd).multiplyScalar(vf).addScaledVector(rgt,vl);car.pos.addScaledVector(car.vel,dt);slip=Math.abs(vl);
@@ -1435,7 +1454,7 @@ function updateCamera(dt,motion){
     carRoot.localToWorld(_d);carRoot.localToWorld(_t);camera.position.copy(_d);camPos.copy(_d);camera.lookAt(_t);
     camera.rotateZ(bodyTilt.rotation.z*0.25);
     /* дрожь от скорости и ударов — и с капота, и из кабины */
-    if(motion){shake=Math.max(0,shake-dt*2);const vb=Math.pow(sp,2.5)+shake*1.5;
+    if(motion){shake=Math.max(0,shake-dt*2);const vb=Math.pow(sp,2.5)*FXK()+shake*1.5;
       camera.position.y+=(rnd()*2-1)*0.012*vb;camera.rotateX((rnd()*2-1)*0.007*vb);camera.rotateZ((rnd()*2-1)*0.009*vb);camera.rotateY((rnd()*2-1)*0.004*vb);}
     setNear(0.05);fovT=(view==='hood'?70:74)+sp*10+portrait;}
   else if(view==='top'){_d.copy(car.pos).addScaledVector(_f,-lerp(3,12,dd)).add(_t.set(0,lerp(16,46,dd),0));
@@ -1448,7 +1467,7 @@ function updateCamera(dt,motion){
     {camIdx=nearestAt(camPos.x,camPos.z,car.idx,30);const cc=centers[camIdx],ex=camPos.x-cc.x,ez=camPos.z-cc.z,ed=Math.hypot(ex,ez),cl=HW-0.7;
      if(ed>cl){camPos.x=cc.x+ex/ed*cl;camPos.z=cc.z+ez/ed*cl;}}
     if(motion)shake=Math.max(0,shake-dt*2);
-    const sh=motion?(shake*0.3+Math.pow(sp,2.5)*0.2):0;
+    const sh=motion?(shake*0.3+Math.pow(sp,2.5)*0.2*FXK()):0;
     camera.position.set(camPos.x+(rnd()*2-1)*sh,camPos.y+(rnd()*2-1)*sh*0.6,camPos.z+(rnd()*2-1)*sh);
     camera.lookAt(car.pos.x+_f.x*4,car.pos.y+0.95,car.pos.z+_f.z*4);
     camera.rotateZ(-steerVis*0.07*sp);setNear(0.3);fovT=62+speed*0.26+portrait;fovT=clamp(fovT,62+portrait,78+portrait);}
@@ -1508,7 +1527,7 @@ function loop(){
     if(racing||state==='go'||state==='ready')placeGhost(ghostClock());
     if(celebrateT>0){celebrateT-=dt;placeCrowd(elapsed,celebrateT>0);}
     setText('speed',String(Math.round(speed*SPEED_TO_KMH)));
-    const sp=clamp(speed/MAX_FORWARD_SPEED,0,1),sl=racing?clamp((sp-0.45)/0.55,0,1)*0.7:0,slEl=$('speedlines');
+    const sp=clamp(speed/MAX_FORWARD_SPEED,0,1),sl=racing?Math.min(1,clamp((sp-0.45)/0.55,0,1)*0.7*FXK()):0,slEl=$('speedlines');
     if(sl>0&&Math.floor(elapsed*20)!==slEl._f){slEl._f=Math.floor(elapsed*20);slEl.style.opacity=(sl*(0.55+Math.random()*0.45)).toFixed(3);slEl.style.transform='rotate('+((Math.random()*2-1)*6).toFixed(1)+'deg) scale('+(1+Math.random()*0.04).toFixed(3)+')';}
     else if(sl<=0)slEl.style.opacity='0';
     emitSmoke(dt,vfNow);updateEngine(dt,vfNow);}
@@ -1519,7 +1538,7 @@ function loop(){
   if(AC&&musicLP)musicLP.frequency.setTargetAtTime(state==='pause'||state==='pick'?650:9000,AC.currentTime,0.15);
   if(state!=='pause'&&state!=='pick')updateParts(dt);
   post.uniforms.flash.value=flash>0.6?0.85:0;flash=Math.max(0,flash-dt*6);
-  post.uniforms.speed.value=state==='race'?clamp((speed/MAX_FORWARD_SPEED-0.4)/0.6,0,1):0;post.uniforms.tm.value=elapsed;updateStreaks(dt);
+  post.uniforms.speed.value=state==='race'?clamp((speed/MAX_FORWARD_SPEED-0.4)/0.6,0,1)*FXK():0;post.uniforms.tm.value=elapsed;updateStreaks(dt);
   renderer.setRenderTarget(rt);renderer.render(scene,camera);renderer.setRenderTarget(null);renderer.render(postScene,postCam);}
 
 carRoot.position.copy(centers[START_I]);carRoot.rotation.y=startHeading;flame.visible=false;
