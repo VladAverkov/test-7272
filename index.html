@@ -56,6 +56,8 @@
   #brakeFb{position:absolute;width:10px;height:110px;border:2px solid var(--cream);border-radius:6px;
     background:rgba(29,18,54,.35);overflow:hidden;opacity:.85}
   #brakeFb i{position:absolute;left:0;right:0;bottom:0;background:var(--red)}
+  #gasFb{position:absolute;width:10px;height:110px;border:2px solid var(--cream);border-radius:6px;background:rgba(29,18,54,.35)}
+  #gasFb i{position:absolute;left:0;right:0;bottom:0;background:var(--grn)}
   #steerFb{position:absolute;width:120px;height:6px;margin:-50px 0 0 -60px;background:rgba(255,246,228,.35);border-radius:3px}
   #steerFb i{position:absolute;top:-5px;left:50%;width:16px;height:16px;margin-left:-8px;border-radius:50%;background:var(--yel);border:2px solid var(--ink)}
 
@@ -72,7 +74,6 @@
     font-weight:900;font-size:13px;color:var(--cream);text-shadow:1px 1px 0 var(--ink);text-align:center}
   .zoneHint::after{content:'';position:absolute;inset:26px;border-radius:50%;background:rgba(255,246,228,.25)}
   #zhL{left:calc(7% + var(--sl))} #zhR{right:calc(7% + var(--sr))}
-  #zhH{bottom:auto;top:calc(20% + var(--st));left:calc(7% + var(--sl))} body.lefty #zhH{left:auto;right:calc(7% + var(--sr))}
   body.lefty #zhL{left:auto;right:calc(7% + var(--sr))} body.lefty #zhR{right:auto;left:calc(7% + var(--sl))}
   .zoneHint small{font-size:11px;font-weight:700;opacity:.9}
   #ctrlHint.noZones .zoneHint{display:none}
@@ -209,15 +210,15 @@
   <div id="speedBox"><div id="speed" class="outl">0</div><div id="kmh">КМ/Ч</div></div>
   <div id="wrongway" class="hidden">РАЗВОРОТ!</div>
   <div id="brakeFb" class="hidden"><i></i></div>
+  <div id="gasFb" class="hidden"><i></i></div>
   <div id="steerFb" class="hidden"><i></i></div>
 </div>
 
 <div id="ctrlHint" class="off hidden">
-  <div class="zoneHint" id="zhH"><span>РУЧНИК</span><small id="zhHSmall">держи</small></div>
   <div class="zoneHint" id="zhL"><span id="zhLText">ТОРМОЗ</span><small id="zhLSmall">↑ сильнее</small></div>
-  <div class="zoneHint" id="zhR"><span>ГАЗ</span><small id="zhRSmall">держи</small></div>
+  <div class="zoneHint" id="zhR"><span>ГАЗ</span><small id="zhRSmall">↑ сильнее</small></div>
   <div id="goMsg" class="sticker">Жди зелёный</div>
-  <div id="keyHint" class="sticker">W газ · S тормоз · A D руль · ПРОБЕЛ ручник</div>
+  <div id="keyHint" class="sticker">W газ · S тормоз · A D руль</div>
 </div>
 
 <div id="lights" class="hidden">
@@ -257,6 +258,7 @@
         <button data-v="0">Нет</button><button data-v="1">Да</button></div></div>
       <div class="setRow"><span>Светофор <b id="lightVal" class="sval"></b></span><input type="range" min="1" max="5" step="1" data-set="lightSec"></div>
       <div class="setRow"><span>Эффекты скорости</span><input type="range" min="0" max="1" step="0.01" data-set="fx"></div>
+      <div class="setRow"><span>Сцепление <b id="gripVal" class="sval"></b></span><input type="range" min="0" max="1" step="0.01" data-set="grip"></div>
       <div class="setRow"><span>Дрифт</span><input type="range" min="0" max="1" step="0.01" data-set="drift"></div>
       <div class="setRow"><span>Призрак</span><div class="seg" data-set="ghost">
         <button data-v="1">Вкл</button><button data-v="0">Выкл</button></div></div>
@@ -346,13 +348,14 @@ function show(id,on){$(id).classList.toggle('hidden',!on);}
 const IS_TOUCH=(window.matchMedia&&matchMedia('(pointer:coarse)').matches)||('ontouchstart' in window);
 const IS_IOS=/iPhone|iPad|iPod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 if(IS_TOUCH)document.body.classList.add('touch');
-const settings={theme:'candy',lightSec:3,drift:0.6,fx:0.5,view:'chase',camDist:0.45,style:'comic',pixSize:0.35,steer:'tilt',sens:0.5,inv:0,lefty:0,ghost:1,musicVol:0.6,engineVol:0.7,tyreVol:0.6};
+const settings={theme:'candy',lightSec:3,grip:0.42,drift:0.35,fx:0.5,view:'chase',camDist:0.45,style:'comic',pixSize:0.35,steer:'tilt',sens:0.5,inv:0,lefty:0,ghost:1,musicVol:0.6,engineVol:0.7,tyreVol:0.6};
 try{const s=JSON.parse(localStorage.getItem('speedline_settings2')||'{}');
   for(const k in settings){if(typeof s[k]===typeof settings[k])settings[k]=s[k];}
+  if(s.grip===undefined)settings.drift=0.35;   // смысл «Дрифта» поменялся — сбрасываем на реальный болид
   if(!['chase','hood','cockpit','top'].includes(settings.view))settings.view='chase';
   if(!['comic','pixel'].includes(settings.style))settings.style='comic';
   if(!['tilt','touch'].includes(settings.steer))settings.steer='tilt';
-  if(!['candy','sakura','neon','noir','toxic'].includes(settings.theme))settings.theme='candy';settings.lightSec=clamp(Math.round(settings.lightSec)||3,1,5);settings.drift=clamp(settings.drift,0,1);}catch(e){}
+  if(!['candy','sakura','neon','noir','toxic'].includes(settings.theme))settings.theme='candy';settings.lightSec=clamp(Math.round(settings.lightSec)||3,1,5);settings.drift=clamp(settings.drift,0,1);settings.grip=clamp(settings.grip,0,1);}catch(e){}
 function saveSettings(){try{localStorage.setItem('speedline_settings2',JSON.stringify(settings));}catch(e){}}
 let toastTimer=0;
 function toast(msg,ms=2600){const t=$('toast');t.textContent=msg;t.classList.remove('hidden');
@@ -408,7 +411,7 @@ function sensorStatus(){
 function recenterTilt(){if(tiltOK)tiltCenter=tiltRaw;}
 function tiltSteer(){let v=shortAngle(tiltRaw-tiltCenter);const dz=0.03;if(Math.abs(v)<dz)return 0;
   v=(Math.abs(v)-dz)*Math.sign(v);
-  let s=clamp(v/lerp(0.6,0.22,settings.sens),-1,1);s=Math.sign(s)*Math.pow(Math.abs(s),1.25);
+  let s=clamp(v/lerp(0.6,0.22,settings.sens),-1,1);s=Math.sign(s)*Math.pow(Math.abs(s),1.8);   // мягкий центр: на скорости нужны доли градуса
   return settings.inv?-s:s;}
 
 /* ================= РЕНДЕР ================= */
@@ -552,8 +555,8 @@ for(let i=0;i<N;i++){const t=new THREE.Vector3().subVectors(centers[(i+1)%N],cen
 for(let i=0;i<N-1;i++)dist.push(dist[i]+centers[i].distanceTo(centers[i+1]));
 const totalLen=dist[N-1]+centers[N-1].distanceTo(centers[0]);
 const HW=TRACK_DEFS[TRACK_ID].hw,WALLH=2.4;
-const MAX_SPEED_KMH=209,ENGINE_ACCEL=26,LINEAR_DRAG=26/61.82;   // разгон мягче, максималка та же
-const MAX_FORWARD_SPEED=ENGINE_ACCEL/LINEAR_DRAG,SPEED_TO_KMH=MAX_SPEED_KMH/MAX_FORWARD_SPEED;
+/* болид F1: ~1000 л.с. на ~800 кг; максималка ≈340 км/ч держится сопротивлением воздуха */
+const F1_POWER=930,F1_CD=930/Math.pow(340/3.6,3),MAX_FORWARD_SPEED=340/3.6,SPEED_TO_KMH=3.6,VFX=70;
 const PHYSICS_DT=1/120;
 const START_I=N-2;
 const startHeading=Math.atan2(tangents[START_I].x,tangents[START_I].z);
@@ -865,9 +868,9 @@ function addSkid(w,x,z,rx,rz){const hw=0.17,y=0.046;
 /* снимок: [t, x, z, курс(непрерывный), vx, vz, индекс трассы, пройденный путь] — 60 раз в секунду */
 const DS=totalLen/N;
 let best=null,cleanBest=null,ghostProg=null;
-try{const b=JSON.parse(localStorage.getItem('speedline2_'+TRACK_ID+'_best')||'null');
+try{const b=JSON.parse(localStorage.getItem('speedline3_'+TRACK_ID+'_best')||'null');
   if(b&&Number.isFinite(b.total)&&Array.isArray(b.snaps)&&b.snaps.length>2)best=b;
-  const c=Number(localStorage.getItem('speedline2_'+TRACK_ID+'_clean'));if(c>0)cleanBest=c;}catch(e){}
+  const c=Number(localStorage.getItem('speedline3_'+TRACK_ID+'_clean'));if(c>0)cleanBest=c;}catch(e){}
 function prepBest(){ghostProg=null;if(!best)return;
   const p=[],t=[];let m=-1e9;for(const s of best.snaps){m=Math.max(m,s[7]);p.push(m);t.push(s[0]);}ghostProg={p,t};}
 prepBest();
@@ -875,18 +878,18 @@ function ghostTimeAt(prog){if(!ghostProg)return null;const P=ghostProg.p,T=ghost
   if(prog<=P[0])return T[0];if(prog>=P[P.length-1])return null;
   let lo=0,hi=P.length-1;while(hi-lo>1){const mid=(lo+hi)>>1;if(P[mid]<prog)lo=mid;else hi=mid;}
   const f=(prog-P[lo])/Math.max(1e-6,P[hi]-P[lo]);return lerp(T[lo],T[hi],f);}
-function saveBest(){try{localStorage.setItem('speedline2_'+TRACK_ID+'_best',JSON.stringify(best));}catch(e){}}
-function saveClean(){try{localStorage.setItem('speedline2_'+TRACK_ID+'_clean',String(cleanBest));}catch(e){}}
+function saveBest(){try{localStorage.setItem('speedline3_'+TRACK_ID+'_best',JSON.stringify(best));}catch(e){}}
+function saveClean(){try{localStorage.setItem('speedline3_'+TRACK_ID+'_clean',String(cleanBest));}catch(e){}}
 
 /* ================= СОСТОЯНИЕ ================= */
 const car={pos:centers[START_I].clone(),heading:startHeading,vel:new THREE.Vector3(),idx:START_I};
 let state='menu',lapTime=0,steerVis=0,prog=0,run=null,recAcc=0,contH=startHeading,prevHeading=startHeading;
 let slip=0,speed=0,wrongT=0,shake=0,wallContact=false,wheelSpin=0,smoothAcc=0,prevVf=0,stopT=0;
 let lightsT=0,litCount=0,goDelay=0.8,fsT=0,physicsAcc=0,steerGain=1,flash=0,driftT=0,lastFxT=0,celebrateT=0,deltaT=0;
-let wheelspin=0,camIdx=0,yawRate=0,hbPrev=0,scraping=0,smokeAcc=0,ctl={steer:0,thr:0,brk:0,hb:0},kbThr=0,lastSrc=IS_TOUCH?'touch':'kb',runs=0;
+let accLong=0,wheelspin=0,camIdx=0,yawRate=0,hbPrev=0,scraping=0,smokeAcc=0,ctl={steer:0,thr:0,brk:0,hb:0},kbThr=0,lastSrc=IS_TOUCH?'touch':'kb',runs=0;
 const camPos=new THREE.Vector3();
 const input={up:0,down:0,left:0,right:0,hb:0};
-const KEYMAP={KeyW:'up',ArrowUp:'up',KeyS:'down',ArrowDown:'down',KeyA:'left',ArrowLeft:'left',KeyD:'right',ArrowRight:'right',Space:'hb'};
+const KEYMAP={KeyW:'up',ArrowUp:'up',KeyS:'down',ArrowDown:'down',KeyA:'left',ArrowLeft:'left',KeyD:'right',ArrowRight:'right'};
 const bulbs=[...document.querySelectorAll('.bulb')];
 function takeSnap(){return[+lapTime.toFixed(3),+car.pos.x.toFixed(2),+car.pos.z.toFixed(2),+contH.toFixed(4),
   +car.vel.x.toFixed(2),+car.vel.z.toFixed(2),car.idx,+prog.toFixed(2)];}
@@ -949,14 +952,14 @@ function thump(p){if(!AC)return;const t=AC.currentTime,g=gainN(0),lp=filt('lowpa
   const o=AC.createOscillator(),og=gainN(0);o.frequency.setValueAtTime(90,t);o.frequency.exponentialRampToValueAtTime(40,t+0.15);
   o.connect(og);og.connect(sfxBus);env(og,t,0.8*clamp(p,0.3,1),0.004,0.16);o.start(t);o.stop(t+0.2);}
 /* передачи: обороты растут внутри передачи, на переключении проседают, выхлоп хлопает */
-const GEAR_TOP=[0.17,0.31,0.46,0.62,0.8,1.03];
+const GEAR_TOP=[0.25,0.35,0.45,0.55,0.65,0.76,0.88,1.02];
 function updateEngine(dt,vfNow){if(!eng)return;const t=AC.currentTime,MV=MAX_FORWARD_SPEED;
   const racing=state==='race',idle=state==='lights'||state==='go'||state==='ready'||state==='fstart';
   const thr=racing?ctl.thr:(idle?0:0);const v=Math.abs(vfNow);
   let target;
   if(!racing&&!idle){target=0;}
   else if(v<1.5){target=900+thr*600;eng.gear=1;}
-  else{if(eng.gear<6&&v>GEAR_TOP[eng.gear-1]*MV*0.985){eng.gear++;eng.shiftT=0.16;if(thr>0.5)pops(2,0.1,false);}
+  else{if(eng.gear<8&&v>GEAR_TOP[eng.gear-1]*MV*0.985){eng.gear++;eng.shiftT=0.16;if(thr>0.5)pops(2,0.1,false);}
     else if(eng.gear>1&&v<GEAR_TOP[eng.gear-2]*MV*0.72){eng.gear--;if(ctl.brk>0.2)pops(1,0.04,false);}
     const lo=eng.gear===1?0:GEAR_TOP[eng.gear-2]*MV*0.72,hi=GEAR_TOP[eng.gear-1]*MV;
     target=lerp(2800,7600,clamp((v-lo)/(hi-lo),0,1));}
@@ -1027,11 +1030,11 @@ function spawnP(x,y,z,col,vx,vy,vz,life,size,grav,grow,spark){const p=parts.find
 function updateParts(dt){for(const p of parts){if(p.life<=0)continue;p.life-=dt;if(p.life<=0){p.s.visible=false;continue;}
   p.vel.y-=p.grav*dt;p.s.position.addScaledVector(p.vel,dt);
   if(p.cloud){p.vel.multiplyScalar(Math.exp(-1.8*dt));p.base=Math.min(4.2,(p.base||p.s.scale.x)+p.grow*dt*(0.4+p.life/p.max));const fl=p.life/p.max,sc=p.base*(fl>0.3?1:0.15+0.85*fl/0.3);p.s.scale.set(sc,sc,1);
-    p.s.material.rotation+=p.spin*dt;const f=p.life/p.max,cd=p.s.position.distanceTo(camera.position);p.s.material.opacity=clamp((cd-1.6)/1.4,0,1);continue;}
+    p.s.material.rotation+=p.spin*dt;const f=p.life/p.max,cd=p.s.position.distanceTo(camera.position);p.s.material.opacity=clamp((cd-3)/2.5,0,1);continue;}
   p.step+=dt;if(p.step>=1/12){p.step=0;const sc=p.s.scale.x+p.grow/12;p.s.scale.set(sc,sc,1);p.s.material.opacity=Math.ceil(p.life/p.max*3)/3;}}}
 function emitSmoke(dt,vfNow){if(state!=='race')return;
-  const sl=clamp((slip-2)/10,0,1),br=ctl.brk>0.35&&vfNow>8?ctl.brk:0,hbk=0,spin=wheelspin&&!wallContact&&vfNow>1?1:0;
-  const rate=sl*110+br*45+hbk*45+spin*60+(speed>28?(speed-28)*0.25:0);
+  const sl=clamp((slip-(wheelspin?6:0)-2)/10,0,1),br=ctl.brk>0.8&&vfNow>15?ctl.brk*0.35:0,hbk=0,spin=wheelspin&&!wallContact&&vfNow>1?1:0;
+  const rate=sl*110+br*45+hbk*45+spin*22+(speed>28?(speed-28)*0.25:0);
   const inten=clamp(sl+br*0.6+hbk*0.5+spin*0.5,0.15,1.4);
   smokeAcc+=rate*dt;
   while(smokeAcc>=1){smokeAcc-=1;const s=rnd()<0.5?1:-1,fx_=Math.sin(car.heading),fz=Math.cos(car.heading);
@@ -1045,7 +1048,7 @@ const FXK=()=>settings.fx*2;   // 0 — никаких эффектов, 1 — �
 const STREAKS=60,stMat=new THREE.MeshBasicMaterial({color:0xfff6e4,transparent:true,opacity:0,depthWrite:false,fog:false});
 const stIM=new THREE.InstancedMesh(new THREE.BoxGeometry(0.035,0.035,1),stMat,STREAKS);stIM.frustumCulled=false;scene.add(stIM);
 const streaks=Array.from({length:STREAKS},()=>({p:new THREE.Vector3(),live:false}));const _sd=new THREE.Object3D();
-function updateStreaks(dt){let sp=state==='race'?clamp((speed/MAX_FORWARD_SPEED-0.35)/0.65,0,1):0;
+function updateStreaks(dt){let sp=state==='race'?clamp((speed/VFX-0.35)/0.65,0,1):0;
   stMat.opacity=Math.min(1,sp*0.8*FXK());if(FXK()<=0)sp=0;const fx_=Math.sin(car.heading),fz=Math.cos(car.heading),len=0.5+speed*0.07;
   for(const s of streaks){
     if(s.live){const rel=(s.p.x-camera.position.x)*fx_+(s.p.z-camera.position.z)*fz;if(rel<-2||rel>70)s.live=false;}
@@ -1147,8 +1150,8 @@ function drawTrackThumb(cv,P){const g=cv.getContext('2d'),W=cv.width,H=cv.height
   g.lineJoin='round';g.beginPath();P.forEach((p,i)=>{const x=ox+(p.x-a)*s,y=oy+(p.z-c)*s;i?g.lineTo(x,y):g.moveTo(x,y);});g.closePath();
   g.strokeStyle='#1d1236';g.lineWidth=12;g.stroke();g.strokeStyle='#ff3d7f';g.lineWidth=6;g.stroke();
   g.fillStyle='#ffd23f';g.strokeStyle='#1d1236';g.lineWidth=3;g.beginPath();g.arc(ox+(P[0].x-a)*s,oy+(P[0].z-c)*s,7,0,7);g.fill();g.stroke();}
-function trackRecords(id){let bt=null,cl=null;try{const b=JSON.parse(localStorage.getItem('speedline2_'+id+'_best')||'null');if(b)bt=b.total;
-  const c=Number(localStorage.getItem('speedline2_'+id+'_clean'));if(c>0)cl=c;}catch(e){}return{bt,cl};}
+function trackRecords(id){let bt=null,cl=null;try{const b=JSON.parse(localStorage.getItem('speedline3_'+id+'_best')||'null');if(b)bt=b.total;
+  const c=Number(localStorage.getItem('speedline3_'+id+'_clean'));if(c>0)cl=c;}catch(e){}return{bt,cl};}
 function buildMenu(){const el=$('carousel');el.innerHTML='';let cur=null;
   for(const id in TRACK_DEFS){const def=TRACK_DEFS[id],here=id===TRACK_ID;
     const card=document.createElement('div');card.className='tcard sticker'+(here?' cur':'');
@@ -1173,11 +1176,11 @@ function hideAll(){['menuScr','setScr','pauseScr','pickScr','resScr','lights','w
 function hint(on,msg,zones=true){const h=$('ctrlHint');
   if(on){show('ctrlHint',true);h.classList.remove('off');h.classList.toggle('noZones',!zones);$('goMsg').textContent=msg;
     const tiltM=settings.steer==='tilt';
-    $('zhLSmall').textContent=tiltM?'↑ сильнее':'↑ сильнее · ↔ руль';$('zhHSmall').textContent=tiltM?'держи':'держи · ↔ руль';$('zhRSmall').textContent=tiltM?'держи':'держи · ↔ руль';}
+    $('zhLSmall').textContent=tiltM?'↑ сильнее':'↑ сильнее · ↔ руль';$('zhRSmall').textContent=tiltM?'↑ сильнее':'↑ сильнее · ↔ руль';}
   else{h.classList.add('off');later(()=>{if(h.classList.contains('off'))show('ctrlHint',false);},400);}}
 function snapCam(){carRoot.position.copy(car.pos);carRoot.rotation.y=car.heading;updateCamera(1,false);camPos.copy(_d);}
 
-function resetCarAtStart(){car.pos.copy(centers[START_I]);car.heading=startHeading;car.vel.set(0,0,0);car.idx=START_I;
+function resetCarAtStart(){accLong=0;car.pos.copy(centers[START_I]);car.heading=startHeading;car.vel.set(0,0,0);car.idx=START_I;
   contH=startHeading;prevHeading=startHeading;prog=-(N-START_I)*DS;lapTime=0;speed=0;slip=0;}
 function startRun(){
   clearUiTimers();clearPtrs();clearParts();resetSkids();hideAll();resetZoom();show('hud',true);
@@ -1277,21 +1280,24 @@ addEventListener('pageshow',wakeAudio);addEventListener('focus',wakeAudio);
 
 /* касания: правая половина — тормоз (выше палец — сильнее), левая — ручник (или руль в режиме «Касание») */
 const ptrs=new Map(),touchCtl={brk:0,thr:0,hb:0,steer:0,steerActive:false};
-function clearPtrs(){ptrs.clear();touchCtl.brk=0;touchCtl.thr=0;touchCtl.hb=0;touchCtl.steer=0;touchCtl.steerActive=false;show('brakeFb',false);show('steerFb',false);}
+function clearPtrs(){ptrs.clear();touchCtl.brk=0;touchCtl.thr=0;touchCtl.hb=0;touchCtl.steer=0;touchCtl.steerActive=false;show('brakeFb',false);show('gasFb',false);show('steerFb',false);}
 function zoneSide(x){const right=x>innerWidth/2;return(right!==!!settings.lefty)?'gas':'brake';}
 const Z=$('zones');
 Z.addEventListener('pointerdown',e=>{e.preventDefault();lastSrc='touch';try{Z.setPointerCapture(e.pointerId);}catch(_){}
-  const side=zoneSide(e.clientX);ptrs.set(e.pointerId,{side,hbZone:side==='brake'&&e.clientY<innerHeight*0.45,x0:e.clientX,y0:e.clientY,x:e.clientX,y:e.clientY});if(side==='gas')tryLaunch();});
+  const side=zoneSide(e.clientX);ptrs.set(e.pointerId,{side,x0:e.clientX,y0:e.clientY,x:e.clientX,y:e.clientY});if(side==='gas')tryLaunch();});
 Z.addEventListener('pointermove',e=>{const p=ptrs.get(e.pointerId);if(p){p.x=e.clientX;p.y=e.clientY;}});
 for(const ev of['pointerup','pointercancel','lostpointercapture'])Z.addEventListener(ev,e=>{ptrs.delete(e.pointerId);});
 Z.addEventListener('contextmenu',e=>e.preventDefault());
-function readTouch(){let hb=0,brk=0,thr=0,steer=0,steerActive=false,bp=null,lp=null,best=0;const H=innerHeight;
-  for(const p of ptrs.values()){const k=clamp((H*0.92-p.y)/(H*0.7),0,1);
-    if(p.side==='brake'){if(p.hbZone){hb=1;}else{const kb=clamp((H*0.95-p.y)/(H*0.5),0,1),v=0.15+0.85*kb;if(v>brk){brk=v;bp=p;}}}
-    else thr=1;
+/* педали: чем выше палец, тем сильнее; 100% — на ~70% высоты экрана */
+const pedal=y=>{const H=innerHeight;return 0.15+0.85*clamp((H*0.95-y)/(H*0.62),0,1);};
+function readTouch(){let brk=0,thr=0,steer=0,steerActive=false,bp=null,gp=null,lp=null,best=0;
+  for(const p of ptrs.values()){const v=pedal(p.y);
+    if(p.side==='brake'){if(v>brk){brk=v;bp=p;}}
+    else{if(v>thr){thr=v;gp=p;}}
     if(settings.steer==='touch'){const dx=p.x-p.x0;if(Math.abs(dx)>=best){best=Math.abs(dx);lp=p;steerActive=true;steer=clamp(dx/lerp(120,45,settings.sens),-1,1);}}}
-  touchCtl.brk=brk;touchCtl.thr=thr;touchCtl.hb=hb;touchCtl.steer=steer;touchCtl.steerActive=steerActive;
+  touchCtl.brk=brk;touchCtl.thr=thr;touchCtl.hb=0;touchCtl.steer=steer;touchCtl.steerActive=steerActive;
   const bf=$('brakeFb');if(bp&&state==='race'){show('brakeFb',true);bf.style.left=(bp.x-38)+'px';bf.style.top=clamp(bp.y-55,8,innerHeight-120)+'px';bf.firstChild.style.height=(brk*100)+'%';}else show('brakeFb',false);
+  const gf=$('gasFb');if(gp&&state==='race'){show('gasFb',true);gf.style.left=(gp.x+28)+'px';gf.style.top=clamp(gp.y-55,8,innerHeight-120)+'px';gf.firstChild.style.height=(thr*100)+'%';}else show('gasFb',false);
   const sf=$('steerFb');if(lp&&steerActive&&state==='race'){show('steerFb',true);sf.style.left=lp.x0+'px';sf.style.top=lp.y0+'px';
     sf.firstChild.style.transform='translateX('+(steer*52)+'px)';}else show('steerFb',false);}
 
@@ -1321,10 +1327,13 @@ function computeControls(dt){
     steer=clamp(-shortAngle(ang-car.heading)*2.2,-1,1);
     steer=clamp(-shortAngle(ang-car.heading)*2.2,-1,1);
     let cur=0;for(let k=10;k<70;k+=10){const a1=tangents[(car.idx+k)%N],a0=tangents[car.idx];cur=Math.max(cur,1-a1.dot(a0));}
-    const want=cur>0.25?26:cur>0.1?38:MAX_FORWARD_SPEED;const sp0=car.vel.length();
+    const sp0=car.vel.length(),mu_=Math.min(gripMu(),6)*0.8;let want=MAX_FORWARD_SPEED;
+    for(let k=4;k<90;k+=4){const i0=(car.idx+k)%N,a=centers[(i0-6+N)%N],b=centers[i0],c=centers[(i0+6)%N];
+      const t1=Math.atan2(b.x-a.x,b.z-a.z),t2=Math.atan2(c.x-b.x,c.z-b.z),an=Math.abs(shortAngle(t2-t1))+1e-4,R=b.distanceTo(c)/an;
+      const kR=mu_*0.0036*R,vc=kR<0.97?Math.sqrt(mu_*9.81*R/(1-kR)):MAX_FORWARD_SPEED;want=Math.min(want,Math.sqrt(vc*vc+2*mu_*12*k*DS));}
     thr=sp0<want?1:0;window.__apBrk=sp0>want+4?1:0;}
   steerGain=Math.min(1,steerGain+dt/0.3);
-  ctl.steer=steer*steerGain;ctl.thr=thr;ctl.brk=window.__ap&&state==='race'?(window.__apBrk||0):brk;ctl.hb=Math.max(input.hb,pad.hb,touchCtl.hb);}
+  ctl.steer=steer*steerGain;ctl.thr=thr;ctl.brk=window.__ap&&state==='race'?(window.__apBrk||0):brk;ctl.hb=0;}
 
 /* кнопки экранов */
 const onTap=(id,fn)=>$(id).addEventListener('click',e=>{e.preventDefault();e.stopPropagation();initAudio();fn();});
@@ -1351,7 +1360,7 @@ function applySettingsUI(){
   document.querySelectorAll('#setScr .seg').forEach(seg=>{const k=seg.dataset.set;
     seg.querySelectorAll('button').forEach(b=>b.classList.toggle('on',String(settings[k])===b.dataset.v));});
   document.querySelectorAll('#setScr input[type=range]').forEach(r=>{r.value=settings[r.dataset.set];});
-  $('lightVal').textContent=settings.lightSec+' с';$('themeVal').textContent=(THEMES[settings.theme]||THEMES.candy).name;
+  $('lightVal').textContent=settings.lightSec+' с';{const m=gripMu();$('gripVal').textContent=m===Infinity?'∞':'μ '+m.toFixed(1);}$('themeVal').textContent=(THEMES[settings.theme]||THEMES.candy).name;
   ghostBest.visible=!!(settings.ghost&&best);}
 document.querySelectorAll('#setScr .seg button').forEach(b=>b.addEventListener('click',()=>{
   const k=b.parentElement.dataset.set;settings[k]=['view','style','steer','theme'].includes(k)?b.dataset.v:Number(b.dataset.v);
@@ -1360,7 +1369,7 @@ document.querySelectorAll('#setScr .seg button').forEach(b=>b.addEventListener('
 document.querySelectorAll('#setScr input[type=range]').forEach(r=>r.addEventListener('input',()=>{
   settings[r.dataset.set]=Number(r.value);saveSettings();
   if(r.dataset.set==='pixSize')sizeRT();if(/Vol$/.test(r.dataset.set))setVolumes();
-  if(r.dataset.set==='camDist')snapCam();if(r.dataset.set==='lightSec')$('lightVal').textContent=settings.lightSec+' с';}));
+  if(r.dataset.set==='camDist')snapCam();if(r.dataset.set==='lightSec')$('lightVal').textContent=settings.lightSec+' с';if(r.dataset.set==='grip'){const m=gripMu();$('gripVal').textContent=m===Infinity?'∞':'μ '+m.toFixed(1);}}));
 function showSensorMsg(){const st=sensorStatus(),el=$('sensorMsg');el.textContent=st.msg;el.className=st.ok===true?'ok':st.ok===false?'bad':'';}
 onTap('testTiltBtn',()=>{enableMotion().then(()=>{showSensorMsg();setTimeout(()=>{recenterTilt();showSensorMsg();},700);setTimeout(showSensorMsg,1800);});});
 
@@ -1369,35 +1378,63 @@ function nearestAt(x,z,hint,range){let bi=hint,bd2=1e18;
   for(let o=-range;o<=range;o++){const i=(hint+o+N)%N,c=centers[i],d=(c.x-x)**2+(c.z-z)**2;if(d<bd2){bd2=d;bi=i;}}return bi;}
 function findNearest(hint,range){let bi=0,bd2=1e18;
   for(let o=-range;o<=range;o++){const i=(hint+o+N)%N,c=centers[i],d=(c.x-car.pos.x)**2+(c.z-car.pos.z)**2;if(d<bd2){bd2=d;bi=i;}}return bi;}
+/* «Сцепление»: 0–90% ползунка — μ от 0,9 до 2,8, дальше растёт к бесконечности, крайнее правое — ∞ */
+const BRAKE_MAX=6*9.81;   // тормозная система болида — ~6g, даже при бесконечном сцеплении
+function gripMu(){const s=settings.grip;if(s>=0.995)return Infinity;if(s<=0.9)return lerp(0.9,2.8,s/0.9);return 2.8/Math.pow(1-(s-0.9)/0.095,1.2);}
 function physics(dt){
   const {steer,thr,brk,hb}=ctl;
   const fwd=new THREE.Vector3(Math.sin(car.heading),0,Math.cos(car.heading)),rgt=new THREE.Vector3(-fwd.z,0,fwd.x);
   let vf=car.vel.dot(fwd),vl=car.vel.dot(rgt);
-  let acc=thr*ENGINE_ACCEL*1.08;   // асимптота чуть выше 209, чтобы максималка реально достигалась
-  if(brk>0.02){if(vf>0.5){acc-=50*brk;stopT=0;}else{stopT+=dt;if(stopT>0.35)acc=-20*brk;else{acc=0;vf*=Math.exp(-12*dt);}}}
-  else stopT=0;
-  wheelspin=thr>0.6&&vf>1&&vf<10&&run&&run.reaction!=null&&lapTime-run.reaction<1.3?1:0;
-  if(thr<0.05&&vf>1&&brk<=0.02)acc-=5;
-  const dragDecay=Math.exp(-LINEAR_DRAG*dt);
-  vf=vf*dragDecay+acc/LINEAR_DRAG*(1-dragDecay);vf=clamp(vf,-13,MAX_FORWARD_SPEED);
-  /* сцепление: на ручнике задние колёса почти не держат вбок — машина идёт боком */
-  /* боковое сцепление ограничено (круг трения): ползунок «Дрифт» снижает сцепление */
-  const D=settings.drift,dk=Math.min(1,D/0.3),G=hb?3+9*(1-D)+400*Math.pow(1-D,8):12+58*(1-D)+400*Math.pow(1-D,8);  // на нуле — без проскальзывания вообще
-  const lost=Math.min(Math.abs(vl),G*dt);vl-=Math.sign(vl)*lost;
-  if(Math.abs(vl)>2)vf*=Math.exp(-(0.12+0.25*D)*Math.min(1,Math.abs(vl)/12)*dt);
-  if(hb)vf*=Math.exp(-0.5*dt);
-  const dir=vf>=0?1:-1;
-  const rate=2.6*clamp(Math.abs(vf)/8,0,1)*(1-0.25*Math.abs(vf)/MAX_FORWARD_SPEED);
-  /* рысканье с инерцией: на ручнике разворот набирается и сам не гаснет — можно улететь в занос */
-  /* занос сам себя раскручивает (избыточная поворачиваемость) — нужен контрруль, иначе разворот */
-  const sliding=Math.abs(vl)>2.5;
-  const yawT=-steer*rate*dir*(hb?lerp(1,2.2,dk):1)+(sliding?clamp(vl,-20,20)*(0.03+0.07*D)*dk*dir:0);
-  const k=D<0.02?16:hb?2.6:(sliding?lerp(6,3,D):16);
-  yawRate+=(yawT-yawRate)*(1-Math.exp(-k*dt));
-  if(hb&&!hbPrev&&Math.abs(vf)>10)yawRate+=-steer*1.1*dir*dk;
-  hbPrev=hb;
+  /* ===== физика болида F1 (на единицу массы) =====
+     • нагрузка на оси = вес + прижимная сила (∝v²) ± перенос веса от продольного ускорения (m·a·h/L);
+     • у каждой оси круг трения Кулона: √(Fx²+Fy²) ≤ μ·N — газ/тормоз «съедают» боковое сцепление;
+     • привод задний; мощность ограничивает разгон на скорости, сцепление — на старте (пробуксовка);
+     • сопротивление воздуха ∝v² держит максималку и тормозит при сбросе газа;
+     • «Сцепление» — μ шин, «Дрифт» — баланс перед/зад (на нуле зад держит сильнее переда + антипробуксовка). */
+  const A=1.98,B=1.62,L=A+B,K2=2.4,Hcg=0.3,g0=9.81,KD=0.0036;
+  const mu=gripMu(),D=settings.drift,rails=mu===Infinity;
+  const sp=Math.abs(vf),aero=KD*sp*sp,Ntot=g0+aero;
+  const ax=accLong;                                            // продольное ускорение прошлого шага (перенос веса)
+  let Nf=Math.max(0.15*Ntot,Ntot*B/L-ax*Hcg/L),Nr=Math.max(0.15*Ntot,Ntot*A/L+ax*Hcg/L);
+  const capF=mu*Nf*lerp(0.96,1.04,D),capR=mu*Nr*lerp(1.25,0.95,D);
+  let vy=-vl,r=yawRate;
+  const delta=-steer*0.3;                                      // руль без поправок на скорость: ±17° на колёсах
+  /* продольные силы */
+  let FxF=0,FxR=0;wheelspin=0;
+  if(brk>0.02){
+    if(vf>0.5){const bd=brk*Math.min(mu*Ntot*0.98,BRAKE_MAX);FxF=-bd*Nf/(Nf+Nr);FxR=-bd*Nr/(Nf+Nr);stopT=0;}
+    else{stopT+=dt;if(stopT>0.35){FxR=-6*brk;}else{vf*=Math.exp(-12*dt);}}}
+  else{stopT=0;
+    const want=thr*Math.min(F1_POWER/Math.max(sp,3),40);
+    const tc=lerp(0.85,1.6,D)*capR;                              // на малом «Дрифте» — антипробуксовка
+    if(rails)FxR=want;else if(want>tc){FxR=Math.min(want,capR*0.92);wheelspin=want>capR?1:0;if(wheelspin)FxR=capR*0.85;}else FxR=want;
+    if(thr<0.05&&vf>1)FxR-=1.0;}                                  // торможение двигателем
+  FxF=clamp(FxF,-capF*0.995,0);FxR=clamp(FxR,-capR*0.995,capR);
+  const drag=F1_CD*vf*Math.abs(vf)+(Math.abs(vf)>0.3?0.15*Math.sign(vf):0);
+  let ay=0;
+  if(rails){   // бесконечное сцепление: машина едет строго туда, куда смотрят колёса
+    vf+=(FxF+FxR-drag)*dt;accLong=FxF+FxR-drag;r=vf*Math.tan(delta)/L;vy=0;
+  }else if(vf>1.5){
+    const u=Math.max(vf,6),af=Math.atan2(vy+A*r,u)-delta,ar=Math.atan2(vy-B*r,u);
+    const Cmax=0.7*K2*u/((A*A+B*B)*dt),ck=Math.min(1,Cmax/Math.max(capF*12,capR*12)),Cf=capF*12*ck,Cr=capR*12*ck;   // общий множитель — баланс осей не ломается   // жёсткость шин с запасом устойчивости
+    /* приоритет поворота над тормозом/газом («Дрифт» 0 — как с ABS/ESP, 1 — честный круг трения без помощников) */
+    const pr=1-0.75*D,yf0=clamp(-Cf*af,-capF,capF),yr0=clamp(-Cr*ar,-capR,capR);
+    const lim=(fx,cap,fy)=>{const room=Math.sqrt(Math.max(cap*cap-fy*fy,(0.25*cap)**2));const m=lerp(cap,room,pr);return clamp(fx,-m,m);};
+    FxF=lim(FxF,capF,yf0);FxR=lim(FxR,capR,yr0);
+    const latF=Math.sqrt(Math.max(capF*capF-FxF*FxF,(0.12*capF)**2)),latR=Math.sqrt(Math.max(capR*capR-FxR*FxR,(0.12*capR)**2));
+    const Fyf=clamp(yf0,-latF,latF),Fyr=clamp(yr0,-latR,latR),cd=Math.cos(delta),sd=Math.sin(delta);
+    const fx=FxF*cd-Fyf*sd+FxR-drag,fy=FxF*sd+Fyf*cd+Fyr;
+    vf+=(fx+vy*r)*dt;vy+=(fy-vf*r)*dt;r+=(A*(Fyf*cd+FxF*sd)-B*Fyr)/K2*dt;ay=fy;accLong=fx;
+    /* мягкая страховка от «волчка», слабее при большом «Дрифте» */
+    {const be=Math.atan2(vy,Math.max(vf,1)),bm=lerp(0.5,0.9,D),ex=Math.abs(be)-bm;if(ex>0)r+=Math.sign(be)*ex*lerp(8,3,D)*dt;}
+    if(vf<8){const w=(vf-1.5)/6.5,rk=vf*Math.tan(delta)/L;r=lerp(rk,r,w);vy*=lerp(0.85,1,w);}
+  }else{
+    vf+=(FxF+FxR-drag)*dt;accLong=FxF+FxR-drag;r=vf*Math.tan(delta)/L;vy*=Math.exp(-10*dt);}
+  vf=clamp(vf,-13,MAX_FORWARD_SPEED+2);vl=-vy;yawRate=r;
   car.heading+=yawRate*dt;
-  car.vel.copy(fwd).multiplyScalar(vf).addScaledVector(rgt,vl);car.pos.addScaledVector(car.vel,dt);slip=Math.abs(vl);
+  {const f2x=Math.sin(car.heading),f2z=Math.cos(car.heading);   // компоненты уже во вращающейся системе — переводим в новом базисе
+   car.vel.set(f2x*vf+(-f2z)*vl,0,f2z*vf+f2x*vl);}
+  car.pos.addScaledVector(car.vel,dt);slip=Math.abs(vl)+(wheelspin?6:0);
   const prevIdx=car.idx;car.idx=findNearest(car.idx,30);
   let di=car.idx-prevIdx;if(di>N/2)di-=N;if(di<-N/2)di+=N;prog+=di*DS;
   const c=centers[car.idx],dx=car.pos.x-c.x,dz=car.pos.z-c.z,d=Math.hypot(dx,dz),lim=HW-1.15;
@@ -1447,7 +1484,7 @@ function updateCamera(dt,motion){
   const view=settings.view,dd=settings.camDist;
   cockpit.visible=view==='cockpit';exteriorTop.forEach(m=>m.visible=view!=='cockpit');
   _f.set(Math.sin(car.heading),0,Math.cos(car.heading));_r.set(-_f.z,0,_f.x);
-  const sp=clamp(speed/MAX_FORWARD_SPEED,0,1),portrait=camera.aspect<1?16:0;
+  const sp=clamp(speed/VFX,0,1),portrait=camera.aspect<1?16:0;
   let fovT;
   if(view==='hood'||view==='cockpit'){carRoot.updateMatrixWorld(true);
     if(view==='hood'){_d.set(0,1.22,-0.5);_t.set(0,0.95,10);}else{_d.set(0,0.8,-0.36);_t.set(0,0.72,8);}
@@ -1515,7 +1552,7 @@ function loop(){
     _fk.set(Math.sin(car.heading),0,Math.cos(car.heading));
     const vfNow=car.vel.dot(_fk),braking=racing&&ctl.brk>0.05&&vfNow>0.5,throttle=racing&&ctl.thr>0.3;
     if(racing){const acc=(vfNow-prevVf)/Math.max(dt,1e-4);prevVf=vfNow;smoothAcc=lerp(smoothAcc,clamp(acc,-60,60),0.1);
-      bodyTilt.rotation.z+=(steerVis*clamp(speed/MAX_FORWARD_SPEED,0,1)*0.13-bodyTilt.rotation.z)*(1-Math.exp(-5*dt));bodyTilt.rotation.x=-smoothAcc*0.004;
+      bodyTilt.rotation.z+=(steerVis*clamp(speed/VFX,0,1)*0.13-bodyTilt.rotation.z)*(1-Math.exp(-5*dt));bodyTilt.rotation.x=-smoothAcc*0.004;
       bodyTilt.position.y=Math.sin(elapsed*9)*0.008;wheelSpin+=vfNow*dt/0.42;wheels.forEach(w=>w.rotation.x=wheelSpin);
       frontPivots.forEach(p=>p.rotation.y=steerVis);steerWheel.rotation.set(-1.15,0,steerVis*-2.4);
       const rx=-_fk.z,rz=_fk.x,marking=(slip>4.5&&speed>8)||(braking&&vfNow>18)||(ctl.hb&&speed>6);
@@ -1527,18 +1564,18 @@ function loop(){
     if(racing||state==='go'||state==='ready')placeGhost(ghostClock());
     if(celebrateT>0){celebrateT-=dt;placeCrowd(elapsed,celebrateT>0);}
     setText('speed',String(Math.round(speed*SPEED_TO_KMH)));
-    const sp=clamp(speed/MAX_FORWARD_SPEED,0,1),sl=racing?Math.min(1,clamp((sp-0.45)/0.55,0,1)*0.7*FXK()):0,slEl=$('speedlines');
+    const sp=clamp(speed/VFX,0,1),sl=racing?Math.min(1,clamp((sp-0.45)/0.55,0,1)*0.7*FXK()):0,slEl=$('speedlines');
     if(sl>0&&Math.floor(elapsed*20)!==slEl._f){slEl._f=Math.floor(elapsed*20);slEl.style.opacity=(sl*(0.55+Math.random()*0.45)).toFixed(3);slEl.style.transform='rotate('+((Math.random()*2-1)*6).toFixed(1)+'deg) scale('+(1+Math.random()*0.04).toFixed(3)+')';}
     else if(sl<=0)slEl.style.opacity='0';
     emitSmoke(dt,vfNow);updateEngine(dt,vfNow);}
   if(state==='menu')updateEngine(dt,0);
-  const sp=clamp(speed/MAX_FORWARD_SPEED,0,1);
+  const sp=clamp(speed/VFX,0,1);
   const mt=state==='menu'?0.4:state==='race'?0.55+0.45*sp:state==='result'?0.5:0.25;
   musicI=lerp(musicI,mt,1-Math.exp(-dt*1.5));
   if(AC&&musicLP)musicLP.frequency.setTargetAtTime(state==='pause'||state==='pick'?650:9000,AC.currentTime,0.15);
   if(state!=='pause'&&state!=='pick')updateParts(dt);
   post.uniforms.flash.value=flash>0.6?0.85:0;flash=Math.max(0,flash-dt*6);
-  post.uniforms.speed.value=state==='race'?clamp((speed/MAX_FORWARD_SPEED-0.4)/0.6,0,1)*FXK():0;post.uniforms.tm.value=elapsed;updateStreaks(dt);
+  post.uniforms.speed.value=state==='race'?clamp((speed/VFX-0.4)/0.6,0,1)*FXK():0;post.uniforms.tm.value=elapsed;updateStreaks(dt);
   renderer.setRenderTarget(rt);renderer.render(scene,camera);renderer.setRenderTarget(null);renderer.render(postScene,postCam);}
 
 carRoot.position.copy(centers[START_I]);carRoot.rotation.y=startHeading;flame.visible=false;
@@ -1549,7 +1586,7 @@ window.__speedline={get state(){return state},get info(){return renderer.info.re
   sim(n){let ms=0,wh=0,pw=wallContact,vmax=0,trace=[];for(let i=0;i<n&&state==='race';i++){computeControls(PHYSICS_DT);lapTime+=PHYSICS_DT;physics(PHYSICS_DT);
     ms=Math.max(ms,slip);vmax=Math.max(vmax,speed);if(wallContact&&!pw)wh++;pw=wallContact;if(i%240==0)trace.push(Math.round(speed*3.6));}
     return{state,lapTime,prog:prog|0,total:totalLen|0,maxSlip:ms,walls:wh,vmax:Math.round(vmax*3.6),trace};},
-  get best(){return best},get phys(){return{slip,yawRate,speed,camDist:camera.position.distanceTo(car.pos),smoke:parts.filter(p=>p.life>0).length}},get ctl(){return ctl},get run(){return run},get prog(){return prog},settings,
+  get ptrs(){return [...ptrs.values()].map(p=>p.side+':'+Math.round(p.y))},get touchCtl(){return touchCtl},  get best(){return best},get phys(){return{slip,yawRate,speed,camDist:camera.position.distanceTo(car.pos),smoke:parts.filter(p=>p.life>0).length}},get ctl(){return ctl},get run(){return run},get prog(){return prog},settings,
   dbg(){return{steer:tiltSteer(),rt:[rt.width,rt.height],music:!!AC,rpm:eng&&eng.rpm,gear:eng&&eng.gear}},startRun,toMenu,openPick,input};
 })();
 </script>
