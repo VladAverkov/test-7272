@@ -269,7 +269,7 @@
     <div class="card sticker">
       <h2 data-en="SETTINGS">НАСТРОЙКИ</h2>
       <div id="setRows">
-      <div class="setRow"><span data-en="Your name">Твоё имя</span><input id="nameIn" maxlength="16" autocomplete="off" placeholder="Гонщик" data-en-ph="Racer"></div>
+      <div class="setRow"><span data-en="Your name">Твоё имя</span><input id="nameIn" maxlength="16" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="done" placeholder="Гонщик" data-en-ph="Racer"></div>
       <div class="setRow"><span data-en="Language">Язык</span><div class="seg" data-set="lang">
         <button data-v="ru">Русский</button><button data-v="en">English</button></div></div>
       <div class="setRow"><span><i class="lbl" data-en="Camera">Камера</i></span><div class="seg" data-set="view">
@@ -369,7 +369,7 @@
       <div id="resVs" class="resSub"></div>
       <div class="resRows">
         <div><span data-en="Rated record">Рейтинговый рекорд</span><b id="resClean"></b></div>
-        <div><span data-en="Best with rewinds">Лучший с перемотками</span><b id="resBest"></b></div>
+        <div><span data-en="Ghost (rewinds & slow-mo allowed)">Призрак (с перемотками и замедлением)</span><b id="resBest"></b></div>
       </div>
     </div>
     <div class="row">
@@ -484,7 +484,7 @@ function sensorStatus(){
 function recenterTilt(){if(tiltOK)tiltCenter=tiltRaw;}
 function tiltSteer(){let v=shortAngle(tiltRaw-tiltCenter);const dz=0.03;if(Math.abs(v)<dz)return 0;
   v=(Math.abs(v)-dz)*Math.sign(v);
-  let s=clamp(v/lerp(0.6,0.22,settings.sens),-1,1);s=Math.sign(s)*Math.pow(Math.abs(s),1.8);   // мягкий центр: на скорости нужны доли градуса
+  let s=clamp(v/lerp(0.6,0.22,settings.sens),-1,1);   // линейный руль: угол наклона ~ угол поворота
   return settings.inv?-s:s;}
 
 /* ================= РЕНДЕР ================= */
@@ -695,6 +695,9 @@ function buildTrack(id){
   if(!CLOSED)for(const [i,back] of [[0,1],[N-1,-1]]){   // торцевые стенки спринта
     const c=centers[i],t=tangents[i],m=add(new THREE.Mesh(new THREE.BoxGeometry(HW*2+0.6,WALLH,0.6),wallMat));
     m.position.set(c.x-t.x*back*(HW-0.4),WALLH/2,c.z-t.z*back*(HW-0.4));m.rotation.y=Math.atan2(t.x,t.z);}
+  /* стартовая линия у спринтов (у кольцевых старт = финиш) */
+  if(!CLOSED){const si=START_I+3,g=new THREE.Group();g.position.copy(centers[si]);g.rotation.y=Math.atan2(tangents[si].x,tangents[si].z);add(g);
+   const strip=new THREE.Mesh(new THREE.PlaneGeometry(HW*2,2.2),finMat);strip.rotation.x=-Math.PI/2;strip.position.y=0.05;strip.receiveShadow=true;g.add(strip);}
   /* финиш */
   {const g=new THREE.Group();g.position.copy(centers[FIN_I]);g.rotation.y=Math.atan2(tangents[FIN_I].x,tangents[FIN_I].z);add(g);
    const strip=new THREE.Mesh(new THREE.PlaneGeometry(HW*2,3.4),finMat);strip.rotation.x=-Math.PI/2;strip.position.y=0.05;strip.receiveShadow=true;g.add(strip);
@@ -1210,7 +1213,7 @@ function buildMenu(){const el=$('carousel');el.innerHTML='';let cur=null;
       try{const b=JSON.parse(localStorage.getItem('speedline4_'+id+'_best')||'null');r={bt:lapOf(b),cl:Number(localStorage.getItem('speedline4_'+id+'_clean'))||null,md:Number(localStorage.getItem('speedline4_'+id+'_medal'))||0};}catch(e){r={bt:null,cl:null,md:0};}}
     card.innerHTML='<canvas width="400" height="200"></canvas><h3>'+(r.md?'<span style="color:'+MEDALS[r.md].c+';-webkit-text-stroke:1px #1d1236">●</span> ':'')+tname(id)+'</h3>'+
       '<div class="diff">'+(def.open?T('СПРИНТ · ','SPRINT · '):T('КРУГ · ','LAP · '))+((settings.lang==='en'?DIFF_EN:DIFF)[TRACK_DIFF[id]]||'').toUpperCase()+'</div>'+
-      '<div class="times"><span>'+T('Рейтинг','Rated')+'<b>'+fmt(r.cl)+'</b></span><span>'+T('С перемотками','With rewinds')+'<b>'+fmt(r.bt)+'</b></span></div>'+medalRow(id)+
+      '<div class="times"><span>'+T('Рекорд','Record')+'<b>'+fmt(r.cl)+'</b></span><span>'+T('Призрак','Ghost')+'<b>'+fmt(r.bt)+'</b></span></div>'+medalRow(id)+
       '<div class="tbtns"><button class="cbtn" data-act="play">'+T('ЕХАТЬ','GO')+' ▶</button><button class="cbtn alt" data-act="board" title="'+T('Рекорды','Records')+'">🏆</button>'+(here&&best?'<button class="cbtn alt imp" data-act="improve" title="'+T('Улучшить','Improve')+'">⟲<span> '+T('УЛУЧШИТЬ','IMPROVE')+'</span></button>':'')+'</div>';
     drawTrackThumb(card.querySelector('canvas'),trackPoints(def,240),!!def.open);
     card.addEventListener('click',e=>{initAudio();const act=e.target.closest('button')?.dataset.act;
@@ -1288,7 +1291,7 @@ function startRun(){
   clearUiTimers();clearPtrs();clearParts();resetSkids();hideAll();resetZoom();show('hud',true);
   resetCarAtStart();yawRate=0;hbPrev=0;shake=0;wallContact=false;wrongT=0;flash=0;driftT=0;smoothAcc=0;prevVf=0;wheelSpin=0;steerVis=0;physicsAcc=0;
   celebrateT=0;stopT=0;kbThr=0;if(eng){eng.gear=1;eng.rpm=900;}
-  run={snaps:[],clean:true,reaction:null,saved:null,slowUsed:settings.slow>1};stunT=0;timeScaleRamp=1;
+  run={snaps:[],clean:true,reaction:null,saved:null,slowUsed:settings.slow>1,std:stdPhys()};if(!run.std)later(()=>toast(T('Сцепление/занос не стандартные — заезд не запишется','Non-standard grip/oversteer — this run won\'t be saved'),3000),300);stunT=0;timeScaleRamp=1;
   setText('time',fmt(0));setDelta(null);snapCam();
   resetLights();show('lights',true);
   hint(true,IS_TOUCH?T('Жди зелёный','Wait for green'):T('Жди зелёный, потом W','Wait for green, then W'));}
@@ -1313,9 +1316,9 @@ function tryLaunch(){initAudio();
 function finishRun(){
   state='result';clearPtrs();runs++;timeScaleRamp=1;
   const total=+lapTime.toFixed(3),react=run.reaction||0,lap=+(total-react).toFixed(3);run.snaps.push(takeSnap());run.saved=null;setText('time',fmt(total));
-  const prevBest=lapOf(best),bestNew=prevBest==null||lap<prevBest;
+  const std=run.std&&stdPhys(),prevBest=lapOf(best),bestNew=std&&(prevBest==null||lap<prevBest);
   if(bestNew){best={total,reaction:react,lap,snaps:run.snaps};saveBest();prepBest();}
-  const rated=run.clean&&gripMu()<=1.705;
+  const rated=std&&run.clean&&!run.slowUsed;
   let cleanNew=false,m=0,medalNew=false,place=0;
   if(rated){cleanNew=cleanBest==null||lap<cleanBest;if(cleanNew)cleanBest=lap;
     m=medalFor(lap);medalNew=m>medal;if(medalNew)medal=m;
@@ -1329,13 +1332,13 @@ function finishRun(){
       spawnP(car.pos.x+(rnd()*2-1)*4,6+rnd()*3,car.pos.z+(rnd()*2-1)*4,col,(rnd()*2-1)*4,rnd()*2,(rnd()*2-1)*4,2.2,0.6,4,0,true);}}
   $('resTitle').textContent=any?T('РЕКОРД!','RECORD!'):T('ФИНИШ!','FINISH!');$('resTitle').classList.toggle('rec',any);
   $('resTime').textContent=fmt(lap);
-  $('resReact').textContent=(rated?T('Рейтинговый заезд','Rated run'):T('Тренировочный заезд','Practice run'))+(settings.slow>1?' · '+T('темп','tempo')+' ×'+settings.slow:'')+
+  $('resReact').textContent=(rated?T('Рейтинговый заезд','Rated run'):std?T('Тренировочный заезд','Practice run'):T('Заезд не записан','Run not saved'))+
     ' · '+T('реакция','reaction')+' '+react.toFixed(2)+T(' с',' s');
   const mt=medalTimes(),mn=k=>settings.lang==='en'?MEDALS[k].en:MEDALS[k].n;
   $('resMedal').innerHTML=m?'<span style="color:'+MEDALS[m].c+';-webkit-text-stroke:1px #1d1236">● '+mn(m).toUpperCase()+'</span>'+(medalNew?T(' — новая!',' — new!'):''):
-    (!rated?'<span style="opacity:.75">'+(run.clean?T('медали и рекорды — только на стандартных шинах','medals & records need standard tyres'):T('с перемотками — без медали и рейтинга','with rewinds — no medal or rating'))+'</span>':
+    (!rated?'<span style="opacity:.75">'+(!std?T('нестандартные сцепление/занос — не сохраняется','non-standard grip/oversteer — not saved'):T('были перемотки или замедление — обновлён только призрак','rewinds or slow-mo used — only the ghost updates'))+'</span>':
      (mt?'<span style="opacity:.8">'+T('до бронзы: ','to bronze: ')+(lap-mt[0]).toFixed(2)+T(' с',' s')+'</span>':''));
-  const tags=[];if(cleanNew)tags.push(T('новый рейтинговый рекорд','new rated record'));if(bestNew&&!cleanNew)tags.push(T('лучший с перемотками','best with rewinds'));
+  const tags=[];if(cleanNew)tags.push(T('новый рейтинговый рекорд','new rated record'));if(bestNew&&!cleanNew)tags.push(T('новый призрак','new ghost'));
   if(place&&place<=3)tags.push(T('место в таблице: ','board place: ')+place);
   $('resTags').innerHTML=tags.map(t=>'<span class="tag">'+t+'</span>').join('');$('resVs').textContent=vs;
   $('resClean').textContent=fmt(cleanBest);$('resBest').textContent=fmt(lapOf(best));
@@ -1376,7 +1379,7 @@ function openPick(src,title){src=src||(best&&{snaps:best.snaps,reaction:best.rea
 function previewPick(i){const s=pickSrc.snaps[i];applySnap(s);setText('time',fmt(s[0]-pickSrc.reaction));setText('pickTime',fmt(s[0]-pickSrc.reaction));
   placeGhost(s[0]);snapCam();}
 function pickGo(){const i=Number($('pickScrub').value);
-  run={snaps:pickSrc.snaps.slice(0,i+1).map(s=>s.slice()),clean:false,reaction:pickSrc.reaction,saved:null};
+  run={snaps:pickSrc.snaps.slice(0,i+1).map(s=>s.slice()),clean:false,reaction:pickSrc.reaction,saved:null,slowUsed:true,std:stdPhys()};
   applySnap(run.snaps[i]);show('pickScr',false);steerVis=0;stopT=0;
   if(eng){eng.gear=1;eng.rpm=2000;}
   state='ready';rampStart();hint(true,IS_TOUCH?T('Газ — поехали','Gas to go'):T('W — ехать','W to go'),false);}
@@ -1384,6 +1387,7 @@ function pickGo(){const i=Number($('pickScrub').value);
 /* ================= ВВОД ================= */
 /* клавиатура */
 addEventListener('keydown',e=>{
+  if(e.target&&(e.target.tagName==='INPUT'&&e.target.type!=='range'||e.target.tagName==='TEXTAREA')){if(e.code==='Enter')e.target.blur();return;}
   initAudio();lastSrc='kb';
   if(KEYMAP[e.code]!==undefined){const c=KEYMAP[e.code];input[c]=1;e.preventDefault();
     if(!e.repeat&&c==='up')tryLaunch();
@@ -1392,7 +1396,7 @@ addEventListener('keydown',e=>{
   if(e.repeat)return;
   if(e.code==='Escape'||e.code==='KeyP'){if(state==='pause')resumeGame();else pauseGame();}
   if(e.code==='Enter'){if(state==='pause')resumeGame();else if(state==='result'||state==='menu')play();}});
-addEventListener('keyup',e=>{if(KEYMAP[e.code]!==undefined){input[KEYMAP[e.code]]=0;e.preventDefault();}});
+addEventListener('keyup',e=>{if(e.target&&e.target.tagName==='INPUT'&&e.target.type!=='range')return;if(KEYMAP[e.code]!==undefined){input[KEYMAP[e.code]]=0;e.preventDefault();}});
 addEventListener('blur',()=>{Object.keys(input).forEach(k=>input[k]=0);pauseGame();});
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden){pauseGame();if(AC&&AC.state==='running')AC.suspend().catch(()=>{});}
@@ -1517,6 +1521,7 @@ function findNearest(hint,range){let bi=0,bd2=1e18;
   for(let o=-range;o<=range;o++){const i=wi(hint+o),c=centers[i],d=(c.x-car.pos.x)**2+(c.z-car.pos.z)**2;if(d<bd2){bd2=d;bi=i;}}return bi;}
 /* «Сцепление»: 0–90% ползунка — μ от 0,9 до 2,8, дальше растёт к бесконечности, крайнее правое — ∞ */
 const BRAKE_MAX=6*9.81;   // тормозная система болида — ~6g, даже при бесконечном сцеплении
+function stdPhys(){return Math.abs(settings.grip-DEFAULTS.grip)<0.004&&Math.abs(settings.drift-DEFAULTS.drift)<0.004;}
 function gripMu(){const s=settings.grip;if(s>=0.995)return Infinity;if(s<=0.9)return lerp(0.9,2.8,s/0.9);return 2.8/Math.pow(1-(s-0.9)/0.095,1.2);}
 /* жёсткие стены: удар отнимает скорость по углу (касание −15%, 30° — около −65%, лоб — почти всё),
    трение о стену сильно тормозит, после удара пару десятых секунды мотор «захлёбывается» */
@@ -1680,7 +1685,7 @@ function loop(){
       if(lightsT>=(NL-1)+goDelay)go();}
     else if(state==='fstart'){fsT-=dt;if(fsT<=0){state='lights';lightsT=0;litCount=0;resetLights();show('lights',true);hint(true,T('Жди зелёный','Wait for green'));}}
     else if(state==='go'){lapTime+=dt;setText('time',fmt(lapTime));}
-    if(racing){if(settings.slow>1&&run)run.slowUsed=true;
+    if(racing){if(settings.slow>1&&run)run.slowUsed=true;if(run&&run.std&&!stdPhys())run.std=false;
       if(timeScaleRamp<1){rampT+=dt;const k=clamp(rampT/1.6,0,1);timeScaleRamp=0.2+0.8*k*k*(3-2*k);}
       physicsAcc+=dt*timeScale();while(physicsAcc>=PHYSICS_DT&&state==='race'){lapTime+=PHYSICS_DT;physics(PHYSICS_DT);physicsAcc-=PHYSICS_DT;}
       setText('time',fmt(lapTime));
